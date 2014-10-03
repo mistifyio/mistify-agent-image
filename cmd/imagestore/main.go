@@ -8,7 +8,7 @@ import (
 
 func main() {
 	// TODO: flags/env set these
-	zpool := "mistify"
+	zpool := "guests"
 	port := 16000
 
 	store, err := imagestore.Create(imagestore.Config{
