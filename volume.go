@@ -39,7 +39,7 @@ func (store *ImageStore) ListVolumes(r *http.Request, request *rpc.VolumeRequest
 }
 
 func (store *ImageStore) CreateVolume(r *http.Request, request *rpc.VolumeRequest, response *rpc.VolumeResponse) error {
-	if request.Size >= 0 {
+	if request.Size <= 0 {
 		return errors.New("need a valid size")
 
 	}
