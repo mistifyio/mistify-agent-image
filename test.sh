@@ -26,5 +26,8 @@ request DeleteDataset '{"id": "guests/foo" }'
 
 request ListVolumes
 
+request RequestImage '{ "source": "http://omnios.omniti.com/nothere/ubuntu-14.04-server-mistify-amd64-disk1.zfs.gz" }'
+
+request ListImages
 
 
