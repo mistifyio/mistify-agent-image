@@ -456,3 +456,15 @@ func (store *ImageStore) GetImage(r *http.Request, request *rpc.ImageRequest, re
 	}
 	return nil
 }
+
+//used for pre-flight check for vm creation
+func (store *ImageStore) VerifyImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
+	image, err := store.getImage(request.Id)
+	if err != nil {
+		return err
+	}
+	*response = rpc.ImageResponse{
+		Images: []*rpc.Image{image},
+	}
+	return nil
+}
