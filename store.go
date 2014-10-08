@@ -23,6 +23,8 @@ import (
 const (
 	EAGAIN = syscall.EAGAIN
 	EEXIST = syscall.EEXIST
+	ENOSPC = syscall.ENOSPC
+	EINVAL = syscall.EINVAL
 )
 
 var (
@@ -457,14 +459,85 @@ func (store *ImageStore) GetImage(r *http.Request, request *rpc.ImageRequest, re
 	return nil
 }
 
+// we are not "over-committing" on disk
+func (store *ImageStore) SpaceAvailible() (uint64, error) {
+	var total uint64
+	ds, err := zfs.GetDataset(store.config.Zpool)
+	if err != nil {
+		return 0, err
+	}
+	total = ds.Avail
+	if ds.Quota != 0 && ds.Quota < total {
+		total = ds.Quota
+	}
+
+	ds, err = zfs.GetDataset(filepath.Join(store.config.Zpool, "guests"))
+	if err != nil {
+		return 0, err
+	}
+
+	if ds.Quota != 0 && ds.Quota < total {
+		total = ds.Quota
+	}
+
+	datasets, err := zfs.Datasets(store.config.Zpool)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, ds := range datasets {
+		switch ds.Type {
+		//filesystems roll up into top-level usage (I think)
+		case "filesystem":
+
+		case "snapshot":
+			// not sure this is correct
+			total = total - ds.Written
+
+		case "volume":
+			total = total - ds.Volsize
+
+		}
+	}
+
+	return total / 1024, nil
+}
+
 //used for pre-flight check for vm creation
-func (store *ImageStore) VerifyImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	image, err := store.getImage(request.Id)
+// we should also check to see if we have enough disk space for it. perhaps in a seperate call?
+func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.Request, response *rpc.Response) error {
+	if request.Guest == nil || request.Guest.Id == "" || len(request.Guest.Disks) == 0 {
+		return EINVAL
+	}
+	availible, err := store.SpaceAvailible()
 	if err != nil {
 		return err
 	}
-	*response = rpc.ImageResponse{
-		Images: []*rpc.Image{image},
+
+	var total uint64
+
+	for i, _ := range request.Guest.Disks {
+		disk := &request.Guest.Disks[i]
+		if disk.Image == "" && disk.Size == 0 {
+			return EINVAL
+		}
+		if disk.Image != "" {
+			image, err := store.getImage(disk.Image)
+			if err != nil {
+				return err
+			}
+			disk.Size = image.Size
+		}
+		total = total + disk.Size
+	}
+
+	fmt.Printf("%d %d\n", total, availible)
+	if total > availible {
+		return ENOSPC
+	}
+
+	*response = rpc.Response{
+		Guest: *request.Guest,
 	}
 	return nil
 }
