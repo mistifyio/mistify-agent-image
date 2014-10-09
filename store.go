@@ -505,7 +505,7 @@ func (store *ImageStore) SpaceAvailible() (uint64, error) {
 
 //used for pre-flight check for vm creation
 // we should also check to see if we have enough disk space for it. perhaps in a seperate call?
-func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.Request, response *rpc.Response) error {
+func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
 	if request.Guest == nil || request.Guest.Id == "" || len(request.Guest.Disks) == 0 {
 		return EINVAL
 	}
@@ -536,7 +536,7 @@ func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.Request, resp
 		return ENOSPC
 	}
 
-	*response = rpc.Response{
+	*response = rpc.GuestResponse{
 		Guest: *request.Guest,
 	}
 	return nil
