@@ -2,7 +2,7 @@ package imagestore
 
 import (
 	"errors"
-	"github.com/boltdb/bolt"
+	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
@@ -40,9 +40,12 @@ func (store *ImageStore) DeleteImage(r *http.Request, request *rpc.ImageRequest,
 		}
 	}
 
-	err = store.DB.Update(func(tx *bolt.Tx) error {
-		if b := tx.Bucket([]byte("images")); b != nil {
-			return b.Delete([]byte(request.Id))
+	err = store.DB.Transaction(func(tx *kvite.Tx) error {
+		if b, err := tx.Bucket("images"); b != nil {
+			if err != nil {
+				return err
+			}
+			return b.Delete(request.Id)
 		}
 		return nil
 	})
