@@ -140,7 +140,6 @@ func Create(config Config) (*ImageStore, error) {
 		}
 	}
 
-	//db, err := bolt.Open(filepath.Join("/", config.Zpool, "images", ".images.bolt"), 0644, nil)
 	db, err := kvite.Open(filepath.Join("/", config.Zpool, "images", ".images.db"), DBTABLE)
 	if err != nil {
 		return nil, err
