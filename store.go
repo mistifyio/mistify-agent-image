@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/boltdb/bolt"
+	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
@@ -25,6 +25,8 @@ const (
 	EEXIST = syscall.EEXIST
 	ENOSPC = syscall.ENOSPC
 	EINVAL = syscall.EINVAL
+
+	DBTABLE = "mistify-agent-image"
 )
 
 var (
@@ -58,7 +60,7 @@ type (
 		// root of the image store
 		dataset              string
 		currentFetchRequests map[string]*fetchRequest
-		DB                   *bolt.DB
+		DB                   *kvite.DB
 		tempDir              string
 		Jobs                 *Jobs
 	}
@@ -138,13 +140,14 @@ func Create(config Config) (*ImageStore, error) {
 		}
 	}
 
-	db, err := bolt.Open(filepath.Join("/", config.Zpool, "images", ".images.bolt"), 0644, nil)
+	//db, err := bolt.Open(filepath.Join("/", config.Zpool, "images", ".images.bolt"), 0644, nil)
+	db, err := kvite.Open(filepath.Join("/", config.Zpool, "images", ".images.db"), DBTABLE)
 	if err != nil {
 		return nil, err
 	}
 	store.DB = db
-	err = store.DB.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte("images"))
+	err = store.DB.Transaction(func(tx *kvite.Tx) error {
+		_, err := tx.CreateBucketIfNotExists("images")
 		return err
 	})
 
@@ -199,13 +202,13 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 		return
 	}
 	// what if we get an error??
-	store.DB.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("images"))
+	store.DB.Transaction(func(tx *kvite.Tx) error {
+		b, err := tx.CreateBucketIfNotExists("images")
 		if err != nil {
 			// log?? destroy dataset??
 			return err
 		}
-		return b.Put([]byte(request.name), val)
+		return b.Put(request.name, val)
 	})
 }
 
@@ -219,12 +222,18 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 	}
 
 	// Does it already exist?
-	err := store.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("images"))
+	err := store.DB.Transaction(func(tx *kvite.Tx) error {
+		b, err := tx.Bucket("images")
+		if err != nil {
+			return err
+		}
 		if b == nil {
 			return NotFound
 		}
-		v := b.Get([]byte(req.name))
+		v, err := b.Get(req.name)
+		if err != nil {
+			return err
+		}
 		if v == nil {
 			return NotFound
 		}
@@ -263,13 +272,13 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 		// log?? destroy dataset?? set an error??
 	} else {
 		// what if we get an error??
-		store.DB.Update(func(tx *bolt.Tx) error {
-			b, err := tx.CreateBucketIfNotExists([]byte("images"))
+		store.DB.Transaction(func(tx *kvite.Tx) error {
+			b, err := tx.CreateBucketIfNotExists("images")
 			if err != nil {
 				// log?? destroy dataset??
 				return err
 			}
-			return b.Put([]byte(request.name), val)
+			return b.Put(request.name, val)
 		})
 	}
 	fmt.Printf("handleFetchRequest: let the user know\n")
@@ -309,12 +318,18 @@ func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 
 	i := &rpc.Image{}
 
-	err := store.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("images"))
+	err := store.DB.Transaction(func(tx *kvite.Tx) error {
+		b, err := tx.Bucket("images")
+		if err != nil {
+			return err
+		}
 		if b == nil {
 			return NotFound
 		}
-		v := b.Get([]byte(name))
+		v, err := b.Get(name)
+		if err != nil {
+			return err
+		}
 		if v == nil {
 			return NotFound
 		}
@@ -340,12 +355,18 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 
 	i := &rpc.Image{}
 
-	err := store.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("images"))
+	err := store.DB.Transaction(func(tx *kvite.Tx) error {
+		b, err := tx.Bucket("images")
+		if err != nil {
+			return err
+		}
 		if b == nil {
 			return NotFound
 		}
-		v := b.Get([]byte(name))
+		v, err := b.Get(name)
+		if err != nil {
+			return err
+		}
 		if v == nil {
 			return NotFound
 		}
@@ -397,9 +418,12 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 func (store *ImageStore) ListImages(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
 	images := make([]*rpc.Image, 0)
 
-	err := store.DB.View(func(tx *bolt.Tx) error {
-		if b := tx.Bucket([]byte("images")); b != nil {
-			b.ForEach(func(k, v []byte) error {
+	err := store.DB.Transaction(func(tx *kvite.Tx) error {
+		if b, err := tx.Bucket("images"); b != nil {
+			if err != nil {
+				return err
+			}
+			b.ForEach(func(k string, v []byte) error {
 				var i rpc.Image
 				if err := json.Unmarshal(v, &i); err != nil {
 					return err
@@ -422,9 +446,15 @@ func (store *ImageStore) ListImages(r *http.Request, request *rpc.ImageRequest, 
 
 func (store *ImageStore) getImage(id string) (*rpc.Image, error) {
 	var image rpc.Image
-	err := store.DB.View(func(tx *bolt.Tx) error {
-		if b := tx.Bucket([]byte("images")); b != nil {
-			v := b.Get([]byte(id))
+	err := store.DB.Transaction(func(tx *kvite.Tx) error {
+		if b, err := tx.Bucket("images"); b != nil {
+			if err != nil {
+				return err
+			}
+			v, err := b.Get(id)
+			if err != nil {
+				return err
+			}
 			if v == nil {
 				return nil
 			}
@@ -537,7 +567,7 @@ func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.GuestRequest,
 	}
 
 	*response = rpc.GuestResponse{
-		Guest: *request.Guest,
+		Guest: request.Guest,
 	}
 	return nil
 }
