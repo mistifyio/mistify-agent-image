@@ -24,3 +24,5 @@ _testmain.go
 *.prof
 
 .vagrant
+
+cmd/mistify-agent-image/mistify-agent-image
