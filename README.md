@@ -1,4 +1,4 @@
 mistify-agent-image
 ===================
 
-Image service for mistily-agent
+Image service for mistify-agent
