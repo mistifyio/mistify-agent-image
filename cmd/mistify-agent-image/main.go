@@ -9,18 +9,23 @@ import (
 )
 
 func main() {
-	zpool := "guests"
-	port := 16000
-	h := false
+	var zpool, logLevel string
+	var port int
+	var h bool
 
 	flag.BoolVar(&h, []string{"h", "#help", "-help"}, false, "display the help")
 	flag.IntVar(&port, []string{"p", "#port", "-port"}, 19999, "listen port")
-	flag.StringVar(&zpool, []string{"z", "#zpool", "-zpool"}, "mistify", "zpool")
+	flag.StringVar(&zpool, []string{"z", "#zpool", "-zpool"}, "guests", "zpool")
+	flag.StringVar(&logLevel, []string{"l", "-log-level"}, "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
 
 	if h {
 		flag.PrintDefaults()
 		os.Exit(0)
+	}
+
+	if err := log.SetLogLevel(logLevel); err != nil {
+		log.Fatal(err)
 	}
 
 	store, err := imagestore.Create(imagestore.Config{
@@ -45,5 +50,4 @@ func main() {
 	}()
 
 	wg.Wait()
-
 }
