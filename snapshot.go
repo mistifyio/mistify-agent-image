@@ -6,7 +6,7 @@ import (
 	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
-	"path/filepath"
+	"regexp"
 )
 
 func snapshotFromDataset(ds *zfs.Dataset) *rpc.Snapshot {
@@ -17,6 +17,10 @@ func snapshotFromDataset(ds *zfs.Dataset) *rpc.Snapshot {
 }
 
 func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
+	if request.Id == "" {
+		return errors.New("need an id")
+	}
+
 	ds, err := zfs.GetDataset(request.Id)
 	if err != nil {
 		return err
@@ -25,10 +29,16 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return fmt.Errorf("cannot create a snapshot of a snapshot")
 	}
 
-	// TODO: validate input
-	// TODO: allow options to be passed
-	s, err := ds.Snapshot(request.Dest, default_zfs_options)
+	if request.Dest == "" {
+		return errors.New("need a dest")
+	}
 
+	var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)
+	if !validName.MatchString(request.Dest) {
+		return errors.New("invalid snapshot dest")
+	}
+
+	s, err := ds.Snapshot(request.Dest, nil)
 	if err != nil {
 		return err
 	}
@@ -44,30 +54,48 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 func (store *ImageStore) getSnapshot(id string) (*zfs.Dataset, error) {
 	ds, err := zfs.GetDataset(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if ds.Type != "snapshot" {
-		return NotSnapshot
+		return nil, NotSnapshot
 	}
 
-	return ds
+	return ds, nil
 }
 
 func (store *ImageStore) DeleteSnapshot(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
+	if request.Id == "" {
+		return errors.New("need an id")
+	}
+
 	s, err := store.getSnapshot(request.Id)
 	if err != nil {
 		return err
 	}
-	// delete it
+
+	if err := s.Destroy(true); err != nil {
+		return err
+	}
+
+	*response = rpc.SnapshotResponse{
+		Snapshots: []*rpc.Snapshot{
+			snapshotFromDataset(s),
+		},
+	}
 	return nil
 }
 
 func (store *ImageStore) GetSnapshot(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
+	if request.Id == "" {
+		return errors.New("need an id")
+	}
+
 	s, err := store.getSnapshot(request.Id)
 	if err != nil {
 		return err
 	}
+
 	*response = rpc.SnapshotResponse{
 		Snapshots: []*rpc.Snapshot{
 			snapshotFromDataset(s),
@@ -77,6 +105,19 @@ func (store *ImageStore) GetSnapshot(r *http.Request, request *rpc.SnapshotReque
 }
 
 func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
-	// see volumes for example?? we want to have a call/option to list snapshots for a particular ZFS entity??
+	datasets, err := zfs.Snapshots(store.config.Zpool)
+	if err != nil {
+		return err
+	}
+
+	snapshots := make([]*rpc.Snapshot, len(datasets))
+	for i, _ := range datasets {
+		snapshots[i] = snapshotFromDataset(datasets[i])
+	}
+
+	*response = rpc.SnapshotResponse{
+		Snapshots: snapshots,
+	}
 	return nil
+	// see volumes for example?? we want to have a call/option to list snapshots for a particular ZFS entity??
 }
