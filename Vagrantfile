@@ -2,26 +2,44 @@
 VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-	config.vm.box = "mistify/trusty64-vmware"
-	config.vm.box_url  = "http://www.akins.org/boxes/mistify-ubuntu-vmware.box"
+	config.vm.box = "ubuntu/trusty64"
 	config.ssh.forward_agent = true
-
 	config.vm.synced_folder ".", "/home/vagrant/go/src/github.com/mistifyio/mistify-agent-image", create: true
+    config.vm.network "forwarded_port", guest: 19999, host: 19999, auto_correct: true
 
-    config.vm.network "forwarded_port", guest: 8080, host: 8080, auto_correct: true
+    config.vm.provision "shell", privileged: true, inline: <<EOS
+set -e
+if [ ! -x /sbin/zpool ]; then
+    apt-get update
+    apt-get -y install software-properties-common
+    add-apt-repository ppa:zfs-native/stable
+    apt-get update
+    apt-get -y install ubuntu-zfs
+fi
 
-	config.vm.provider "vmware_fusion" do |v|
-		# GUI is needed because when you use bridging inside Linux,
-		# Fusion must ask for admin password
-		v.gui = true
-		v.vmx["memsize"] = "1024"
-		v.vmx["numvcpus"] = "2"
-		v.vmx["vhv.enable"] = "TRUE"
-	end
+if [ ! -x /usr/local/go/bin/go ]; then
+     apt-get update
+     apt-get -y install curl git-core mercurial
+     cd /tmp
+     curl -s -L -O http://golang.org/dl/go1.3.3.linux-amd64.tar.gz
+     tar -C /usr/local -zxf go1.3.3.linux-amd64.tar.gz
+     rm /tmp/go1.3.3.linux-amd64.tar.gz
+     chown -R vagrant /home/vagrant/go
+fi
 
-    config.vm.provision "shell", privileged: false, inline: <<EOF
-cd /home/vagrant/go/src/github.com/mistifyio/mistify-agent-image
-go get github.com/tools/godep
-godep go install
+if [ ! -x /usr/local/bin/jq ]; then
+    cd /tmp
+    curl -s -L -O http://stedolan.github.io/jq/download/linux64/jq
+    mv jq /usr/local/bin
+    chmod 0555 /usr/local/bin/jq
+fi
+
+cat <<EOF > /etc/profile.d/go.sh
+GOPATH=\$HOME/go
+export GOPATH
+PATH=\$GOPATH/bin:\$PATH:/usr/local/go/bin
+export PATH
 EOF
+
+EOS
 end
