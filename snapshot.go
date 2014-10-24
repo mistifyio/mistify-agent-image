@@ -39,7 +39,7 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 
 	recursive := false
 	if request.Recursive {
-		recursive = true
+		recursive = request.Recursive
 	}
 
 	s, err := ds.Snapshot(request.Dest, recursive)
@@ -78,7 +78,12 @@ func (store *ImageStore) DeleteSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return err
 	}
 
-	if err := s.Destroy(true); err != nil {
+	recursive := false
+	if request.Recursive {
+		recursive = request.Recursive
+	}
+
+	if err := s.Destroy(recursive); err != nil {
 		return err
 	}
 
