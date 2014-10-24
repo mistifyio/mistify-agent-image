@@ -38,7 +38,12 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return errors.New("invalid snapshot dest")
 	}
 
-	s, err := ds.Snapshot(request.Dest, nil)
+	recursive := false
+	if request.Recursive {
+		recursive = true
+	}
+
+	s, err := ds.Snapshot(request.Dest, recursive)
 	if err != nil {
 		return err
 	}
