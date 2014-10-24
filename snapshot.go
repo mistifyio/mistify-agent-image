@@ -105,7 +105,12 @@ func (store *ImageStore) GetSnapshot(r *http.Request, request *rpc.SnapshotReque
 }
 
 func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
-	datasets, err := zfs.Snapshots(store.config.Zpool)
+	filter := store.config.Zpool
+	if request.Id != "" {
+		filter = request.Id
+	}
+
+	datasets, err := zfs.Snapshots(filter)
 	if err != nil {
 		return err
 	}
