@@ -6,6 +6,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 	config.ssh.forward_agent = true
 	config.vm.synced_folder ".", "/home/vagrant/go/src/github.com/mistifyio/mistify-agent-image", create: true
     config.vm.network "forwarded_port", guest: 19999, host: 19999, auto_correct: true
+    config.vm.hostname = "mistify-agent-image"
 
     config.vm.provision "shell", privileged: true, inline: <<EOS
 set -e
@@ -15,6 +16,8 @@ if [ ! -x /sbin/zpool ]; then
     add-apt-repository ppa:zfs-native/stable
     apt-get update
     apt-get -y install ubuntu-zfs
+    modprobe zfs
+    echo zfs >> /etc/modules
 fi
 
 if [ ! -x /usr/local/go/bin/go ]; then
