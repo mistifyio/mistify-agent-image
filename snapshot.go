@@ -86,7 +86,7 @@ func (store *ImageStore) DeleteSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return err
 	}
 
-	if err := s.Destroy(recursive); err != nil {
+	if err := s.Destroy(request.Recursive); err != nil {
 		return err
 	}
 
