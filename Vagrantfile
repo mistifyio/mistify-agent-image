@@ -44,5 +44,18 @@ PATH=\\$GOPATH/bin:\\$PATH:/usr/local/go/bin
 export PATH
 EOF
 
+if [ ! -f /root/zfs0.img ]; then
+  for i in {0..3}; do
+      truncate -s 2G /root/zfs\$i.img
+   done
+   zpool create guests /root/zfs0.img /root/zfs1.img /root/zfs2.img /root/zfs3.img
+fi
+
 EOS
+
+    config.vm.provision "shell", privileged: false, inline: <<EOS
+cd /home/vagrant/go/src/github.com/mistifyio/mistify-agent-image/cmd/mistify-agent-image
+go get
+EOS
+    
 end
