@@ -2,7 +2,6 @@ package imagestore
 
 import (
 	"errors"
-	"fmt"
 	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
@@ -26,7 +25,7 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return err
 	}
 	if ds.Type == "snapshot" {
-		return fmt.Errorf("cannot create a snapshot of a snapshot")
+		return errors.New("cannot create a snapshot of a snapshot")
 	}
 
 	if request.Dest == "" {
