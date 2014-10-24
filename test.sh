@@ -30,4 +30,14 @@ request RequestImage '{ "source": "http://omnios.omniti.com/nothere/ubuntu-14.04
 
 request ListImages
 
+request ListSnapshots
 
+request CreateSnapshot '{"id": "guests", "dest": "testSnapshot"}'
+
+request ListSnapshots
+
+request GetSnapshot '{"id": "guests@testSnapshot"}'
+
+request DeleteSnapshot '{"id": "guests@testSnapshot"}'
+
+request ListSnapshots
