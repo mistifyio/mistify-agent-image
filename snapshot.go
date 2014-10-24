@@ -129,5 +129,4 @@ func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotReq
 		Snapshots: snapshots,
 	}
 	return nil
-	// see volumes for example?? we want to have a call/option to list snapshots for a particular ZFS entity??
 }
