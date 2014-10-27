@@ -44,4 +44,26 @@ request RequestImage '{ "source": "http://omnios.omniti.com/nothere/ubuntu-14.04
 
 request ListImages
 
+request ListSnapshots
 
+request CreateSnapshot '{"id": "guests", "dest": "testSnapshot"}'
+
+request ListSnapshots
+
+request GetSnapshot '{"id": "guests@testSnapshot"}'
+
+request DeleteSnapshot '{"id": "guests@testSnapshot"}'
+
+request ListSnapshots
+
+request CreateVolume '{"id": "guests/rsnap", "size": 8 }'
+
+request CreateSnapshot '{"id": "guests", "dest": "testSnapshot", "recursive": true}'
+
+request ListSnapshots
+
+request DeleteSnapshot '{"id": "guests@testSnapshot", "recursive": true}'
+
+request ListSnapshots
+
+request DeleteDataset '{"id": "guests/rsnap"}'

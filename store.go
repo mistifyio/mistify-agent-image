@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/go-zfs"
+	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
 	"os"
@@ -30,8 +30,9 @@ const (
 )
 
 var (
-	NotFound  = errors.New("not found")
-	NotVolume = errors.New("not a volume")
+	NotFound    = errors.New("not found")
+	NotVolume   = errors.New("not a volume")
+	NotSnapshot = errors.New("not a snapshot")
 )
 
 type (
