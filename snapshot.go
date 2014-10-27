@@ -2,7 +2,6 @@ package imagestore
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -10,6 +9,8 @@ import (
 	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
 )
+
+var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)
 
 func snapshotFromDataset(ds *zfs.Dataset) *rpc.Snapshot {
 	return &rpc.Snapshot{
@@ -51,7 +52,6 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return errors.New("need a dest")
 	}
 
-	var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)
 	if !validName.MatchString(request.Dest) {
 		return errors.New("invalid snapshot dest")
 	}
@@ -106,10 +106,10 @@ func (store *ImageStore) getSnapshotsRecursive(id string) ([]*zfs.Dataset, error
 	}
 
 	results := make([]*zfs.Dataset, 0, len(datasets))
-	atName := regexp.MustCompile(fmt.Sprintf("@%s$", splitID[1]))
 
+	snapName := splitID[1]
 	for i := range datasets {
-		if atName.MatchString(datasets[i].Name) {
+		if snapName == strings.Split(datasets[i].Name, "@")[1] {
 			results = append(results, datasets[i])
 		}
 	}
