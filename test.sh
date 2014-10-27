@@ -41,3 +41,15 @@ request GetSnapshot '{"id": "guests@testSnapshot"}'
 request DeleteSnapshot '{"id": "guests@testSnapshot"}'
 
 request ListSnapshots
+
+request CreateVolume '{"id": "guests/rsnap", "size": 8 }'
+
+request CreateSnapshot '{"id": "guests", "dest": "testSnapshot", "recursive": true}'
+
+request ListSnapshots
+
+request DeleteSnapshot '{"id": "guests@testSnapshot", "recursive": true}'
+
+request ListSnapshots
+
+request DeleteDataset '{"id": "guests/rsnap"}'
