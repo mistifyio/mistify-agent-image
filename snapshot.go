@@ -196,13 +196,8 @@ func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotReq
 		return err
 	}
 
-	snapshots := make([]*rpc.Snapshot, len(datasets))
-	for i := range datasets {
-		snapshots[i] = snapshotFromDataset(datasets[i])
-	}
-
 	*response = rpc.SnapshotResponse{
-		Snapshots: snapshots,
+		Snapshots: snapshotsFromDatasets(datasets),
 	}
 	return nil
 }
