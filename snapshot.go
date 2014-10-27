@@ -147,3 +147,25 @@ func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotReq
 	}
 	return nil
 }
+
+func (store *ImageStore) RollbackSnapshot(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
+	if request.Id == "" {
+		return errors.New("need an id")
+	}
+
+	s, err := store.getSnapshot(request.Id)
+	if err != nil {
+		return err
+	}
+
+	if err = s.Rollback(request.DestroyMoreRecent); err != nil {
+		return err
+	}
+
+	*response = rpc.SnapshotResponse{
+		Snapshots: []*rpc.Snapshot{
+			snapshotFromDataset(s),
+		},
+	}
+	return nil
+}
