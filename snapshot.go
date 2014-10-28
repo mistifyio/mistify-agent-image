@@ -2,17 +2,30 @@ package imagestore
 
 import (
 	"errors"
-	"github.com/mistifyio/go-zfs"
-	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
 	"regexp"
+	"strings"
+
+	"github.com/mistifyio/go-zfs"
+	"github.com/mistifyio/mistify-agent/rpc"
 )
+
+var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)
 
 func snapshotFromDataset(ds *zfs.Dataset) *rpc.Snapshot {
 	return &rpc.Snapshot{
 		Id:   ds.Name,
 		Size: ds.Volsize / 1024 / 1024, // what should this actually be?
 	}
+}
+
+func snapshotsFromDatasets(datasets []*zfs.Dataset) []*rpc.Snapshot {
+	snapshots := make([]*rpc.Snapshot, len(datasets))
+	for i, ds := range datasets {
+		snapshots[i] = snapshotFromDataset(ds)
+	}
+
+	return snapshots
 }
 
 /*
@@ -39,7 +52,6 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return errors.New("need a dest")
 	}
 
-	var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)
 	if !validName.MatchString(request.Dest) {
 		return errors.New("invalid snapshot dest")
 	}
@@ -49,10 +61,22 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return err
 	}
 
-	*response = rpc.SnapshotResponse{
-		Snapshots: []*rpc.Snapshot{
+	var snapshots []*rpc.Snapshot
+	if request.Recursive {
+		datasets, err := store.getSnapshotsRecursive(s.Name)
+		if err != nil {
+			return err
+		}
+
+		snapshots = snapshotsFromDatasets(datasets)
+	} else {
+		snapshots = []*rpc.Snapshot{
 			snapshotFromDataset(s),
-		},
+		}
+	}
+
+	*response = rpc.SnapshotResponse{
+		Snapshots: snapshots,
 	}
 	return nil
 }
@@ -68,6 +92,30 @@ func (store *ImageStore) getSnapshot(id string) (*zfs.Dataset, error) {
 	}
 
 	return ds, nil
+}
+
+func (store *ImageStore) getSnapshotsRecursive(id string) ([]*zfs.Dataset, error) {
+	splitID := strings.Split(id, "@")
+	if len(splitID) != 2 {
+		return nil, errors.New("invalid snapshot name")
+	}
+
+	datasets, err := zfs.Snapshots(splitID[0])
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]*zfs.Dataset, 0, len(datasets))
+
+	snapName := splitID[1]
+	for i := range datasets {
+		parts := strings.Split(datasets[i].Name, "@")
+		if len(parts) == 2 && snapName == parts[1] {
+			results = append(results, datasets[i])
+		}
+	}
+
+	return results, nil
 }
 
 /*
@@ -86,14 +134,26 @@ func (store *ImageStore) DeleteSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return err
 	}
 
+	var snapshots []*rpc.Snapshot
+	if request.Recursive {
+		datasets, err := store.getSnapshotsRecursive(s.Name)
+		if err != nil {
+			return err
+		}
+
+		snapshots = snapshotsFromDatasets(datasets)
+	} else {
+		snapshots = []*rpc.Snapshot{
+			snapshotFromDataset(s),
+		}
+	}
+
 	if err := s.Destroy(request.Recursive); err != nil {
 		return err
 	}
 
 	*response = rpc.SnapshotResponse{
-		Snapshots: []*rpc.Snapshot{
-			snapshotFromDataset(s),
-		},
+		Snapshots: snapshots,
 	}
 	return nil
 }
@@ -137,13 +197,8 @@ func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotReq
 		return err
 	}
 
-	snapshots := make([]*rpc.Snapshot, len(datasets))
-	for i := range datasets {
-		snapshots[i] = snapshotFromDataset(datasets[i])
-	}
-
 	*response = rpc.SnapshotResponse{
-		Snapshots: snapshots,
+		Snapshots: snapshotsFromDatasets(datasets),
 	}
 	return nil
 }
