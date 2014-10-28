@@ -67,3 +67,13 @@ request DeleteSnapshot '{"id": "guests@testSnapshot", "recursive": true}'
 request ListSnapshots
 
 request DeleteDataset '{"id": "guests/rsnap"}'
+
+request CreateSnapshot '{"id": "guests", "dest": "testSnapshot1"}'
+
+request CreateSnapshot '{"id": "guests", "dest": "testSnapshot2"}'
+
+request RollbackSnapshot '{"id": "guests@testSnapshot2"}'
+
+request RollbackSnapshot '{"id": "guests@testSnapshot1", "destroyMoreRecent": true}'
+
+request DeleteSnapshot '{"id": "guests@testSnapshot1"}'
