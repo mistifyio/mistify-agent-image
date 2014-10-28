@@ -8,9 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mistifyio/go-zfs"
-	"github.com/mistifyio/kvite"
-	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +15,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/mistifyio/go-zfs"
+	"github.com/mistifyio/kvite"
+	"github.com/mistifyio/mistify-agent/rpc"
 )
 
 const (
@@ -296,7 +297,6 @@ func (store *ImageStore) Run() {
 		store.fetchWorkers[i].Run()
 	}
 	store.cloneWorker.Run()
-	fmt.Println("I am here")
 	for {
 		select {
 		case <-store.timeToDie:
@@ -304,6 +304,7 @@ func (store *ImageStore) Run() {
 				f.Exit()
 			}
 			store.cloneWorker.Exit()
+			store.DB.Close()
 			break
 
 		case req := <-store.usersFetcherChan:
