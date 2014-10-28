@@ -109,7 +109,8 @@ func (store *ImageStore) getSnapshotsRecursive(id string) ([]*zfs.Dataset, error
 
 	snapName := splitID[1]
 	for i := range datasets {
-		if snapName == strings.Split(datasets[i].Name, "@")[1] {
+		parts := strings.Split(datasets[i].Name, "@")
+		if len(parts) == 2 && snapName == parts[1] {
 			results = append(results, datasets[i])
 		}
 	}
