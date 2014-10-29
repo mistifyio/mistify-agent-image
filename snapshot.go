@@ -16,7 +16,7 @@ var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)
 func snapshotFromDataset(ds *zfs.Dataset) *rpc.Snapshot {
 	return &rpc.Snapshot{
 		Id:   ds.Name,
-		Size: ds.Volsize / 1024 / 1024, // what should this actually be?
+		Size: ds.Written / 1024 / 1024,
 	}
 }
 
