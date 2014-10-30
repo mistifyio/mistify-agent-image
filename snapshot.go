@@ -1,6 +1,7 @@
 package imagestore
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -15,7 +16,7 @@ var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)
 func snapshotFromDataset(ds *zfs.Dataset) *rpc.Snapshot {
 	return &rpc.Snapshot{
 		Id:   ds.Name,
-		Size: ds.Volsize / 1024 / 1024, // what should this actually be?
+		Size: ds.Written / 1024 / 1024,
 	}
 }
 
@@ -223,4 +224,40 @@ func (store *ImageStore) RollbackSnapshot(r *http.Request, request *rpc.Snapshot
 		},
 	}
 	return nil
+}
+
+/*
+DownloadSnapshot downloads a zfs snapshot as a stream of data
+    Request params:
+    id        string : Req : Full name of the snapshot
+*/
+func (store *ImageStore) DownloadSnapshot(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	var request rpc.SnapshotRequest
+	err := decoder.Decode(&request)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if request.Id == "" {
+		http.Error(w, "need an id", 400)
+		return
+	}
+
+	s, err := store.getSnapshot(request.Id)
+	if err != nil {
+		if err == NotSnapshot || strings.Contains(err.Error(), "does not exist") {
+			http.Error(w, err.Error(), 404)
+			return
+		}
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	err = s.SendSnapshot(w)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 }

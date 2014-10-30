@@ -10,5 +10,8 @@ import (
 func (store *ImageStore) RunHTTP(port int) error {
 	s, _ := rpc.NewServer(port)
 	s.RegisterService(store)
+	// Snapshot downloads are streaming application/octet-stream and can't be
+	// done through the normal RPC handling
+	s.HandleFunc("/snapshots/download", store.DownloadSnapshot)
 	return s.ListenAndServe()
 }
