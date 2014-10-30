@@ -3,8 +3,8 @@ package imagestore_test
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -161,35 +161,16 @@ func TestRollbackSnapshotOlder(t *testing.T) {
 	})
 }
 
-// DownloadSnapshot is a plain HTTP handler and writes a zfs stream responsee
-// Need to stub the HTTP ResponseWriter for it to succeed. Can't store response
-// code internally since WriteHeader works on a value and not a pointer
-var responseCode int = 200
-
-type stubResponseWriter struct{}
-
-func (srw stubResponseWriter) Header() http.Header {
-	return http.Header{}
-}
-
-func (srw stubResponseWriter) WriteHeader(c int) {
-	responseCode = c
-	return
-}
-
-func (srw stubResponseWriter) Write(b []byte) (int, error) {
-	return ioutil.Discard.Write(b)
-}
-
 func TestDownloadSnapshot(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, false)
-		post := `{"id": "test@` + snapshotName + `"}`
-		request := &http.Request{
-			Body: ioutil.NopCloser(bytes.NewBufferString(post)),
-		}
-		srw := stubResponseWriter{}
-		store.DownloadSnapshot(srw, request)
-		helpers.Equals(t, 200, responseCode)
+
+		postBody := bytes.NewBufferString(`{"id": "test@` + snapshotName + `"}`)
+		req, err := http.NewRequest("POST", "http://127.0.0.1/snapshots/download", postBody)
+		helpers.Ok(t, err)
+
+		w := httptest.NewRecorder()
+		store.DownloadSnapshot(w, req)
+		helpers.Equals(t, 200, w.Code)
 	})
 }
