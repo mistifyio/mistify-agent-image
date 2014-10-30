@@ -44,12 +44,9 @@ PATH=\\$GOPATH/bin:\\$PATH:/usr/local/go/bin
 export PATH
 EOF
 
-if [ ! -f /root/zfs0.img ]; then
-  for i in {0..3}; do
-      truncate -s 2G /root/zfs\$i.img
-   done
-   zpool create guests /root/zfs0.img /root/zfs1.img /root/zfs2.img /root/zfs3.img
-fi
+cat << END > /etc/sudoers.d/go
+Defaults env_keep += "GOPATH"
+END
 
 EOS
 
