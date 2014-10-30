@@ -184,13 +184,12 @@ func (srw stubResponseWriter) Write(b []byte) (int, error) {
 func TestDownloadSnapshot(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, false)
-		ds := imagestore.DownloadSnapshot{}
 		post := `{"id": "test@` + snapshotName + `"}`
 		request := &http.Request{
 			Body: ioutil.NopCloser(bytes.NewBufferString(post)),
 		}
 		srw := stubResponseWriter{}
-		ds.ServeHTTP(srw, request)
+		store.DownloadSnapshot(srw, request)
 		helpers.Equals(t, 200, responseCode)
 	})
 }

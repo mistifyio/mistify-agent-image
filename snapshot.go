@@ -231,9 +231,7 @@ DownloadSnapshot downloads a zfs snapshot as a stream of data
     Request params:
     id        string : Req : Full name of the snapshot
 */
-type DownloadSnapshot struct{}
-
-func (ds DownloadSnapshot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (store *ImageStore) DownloadSnapshot(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var request rpc.SnapshotRequest
 	err := decoder.Decode(&request)
@@ -246,7 +244,6 @@ func (ds DownloadSnapshot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	store := ImageStore{}
 	s, err := store.getSnapshot(request.Id)
 	if err != nil {
 		if err == NotSnapshot || strings.Contains(err.Error(), "does not exist") {

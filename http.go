@@ -12,6 +12,6 @@ func (store *ImageStore) RunHTTP(port int) error {
 	s.RegisterService(store)
 	// Snapshot downloads are streaming application/octet-stream and can't be
 	// done through the normal RPC handling
-	s.Handle("/snapshots/download", DownloadSnapshot{})
+	s.HandleFunc("/snapshots/download", store.DownloadSnapshot)
 	return s.ListenAndServe()
 }
