@@ -593,7 +593,7 @@ func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestReq
 			//already exists
 			continue
 		} else {
-			if !strings.Contains(err.Error(), "not found") {
+			if !strings.Contains(err.Error(), "does not exist") {
 				return err
 			}
 		}
@@ -611,13 +611,13 @@ func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestReq
 			if err != nil {
 				return err
 			}
-			disk.Device = deviceForDataset(ds)
+			disk.Source = deviceForDataset(ds)
 		} else {
 			ds, err := zfs.CreateVolume(disk.Volume, disk.Size*1024*1024, default_zfs_options)
 			if err != nil {
 				return err
 			}
-			disk.Device = deviceForDataset(ds)
+			disk.Source = deviceForDataset(ds)
 		}
 	}
 	return nil
