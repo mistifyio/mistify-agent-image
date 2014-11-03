@@ -18,6 +18,7 @@ import (
 
 	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/kvite"
+	"github.com/mistifyio/mistify-agent/client"
 	"github.com/mistifyio/mistify-agent/rpc"
 )
 
@@ -562,7 +563,6 @@ func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.GuestRequest,
 		total = total + disk.Size
 	}
 
-	fmt.Printf("%d %d\n", total, availible)
 	if total > availible {
 		return ENOSPC
 	}
@@ -570,5 +570,86 @@ func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.GuestRequest,
 	*response = rpc.GuestResponse{
 		Guest: request.Guest,
 	}
+	return nil
+}
+
+// CreateGuestDisks creates guest disks
+func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
+	err := store.VerifyDisks(r, request, response)
+	if err != nil {
+		return err
+	}
+	// VerifyDisks filled in response
+	guest := response.Guest
+
+	for i, _ := range guest.Disks {
+		disk := &guest.Disks[i]
+
+		disk.Volume = fmt.Sprintf("%s/guests/%s/disk-%d", store.config.Zpool, guest.Id, i)
+
+		_, err := zfs.GetDataset(disk.Volume)
+
+		if err == nil {
+			//already exists
+			continue
+		} else {
+			if !strings.Contains(err.Error(), "does not exist") {
+				return err
+			}
+		}
+
+		if disk.Image != "" {
+			image, err := store.getImage(disk.Image)
+			if err != nil {
+				return err
+			}
+			s, err := zfs.GetDataset(image.Snapshot)
+			if err != nil {
+				return err
+			}
+			ds, err := s.Clone(disk.Volume, default_zfs_options)
+			if err != nil {
+				return err
+			}
+			disk.Source = deviceForDataset(ds)
+		} else {
+			ds, err := zfs.CreateVolume(disk.Volume, disk.Size*1024*1024, default_zfs_options)
+			if err != nil {
+				return err
+			}
+			disk.Source = deviceForDataset(ds)
+		}
+	}
+	return nil
+}
+
+// DeleteGuestsDisks removes guests disks.  It actually removes the entire guest filesystem.
+func (store *ImageStore) DeleteGuestsDisks(r *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
+	if request.Guest == nil || request.Guest.Id == "" {
+		return EINVAL
+	}
+	name := fmt.Sprintf("%s/guests/%s", store.config.Zpool, request.Guest.Id)
+
+	ds, err := zfs.GetDataset(name)
+
+	*response = rpc.GuestResponse{
+		Guest: request.Guest,
+	}
+	response.Guest.Disks = []client.Disk{}
+
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			// not there
+			return nil
+		} else {
+			return err
+		}
+	}
+
+	// we assume guest disk were created by this service, or at least in the same structure
+	if err := ds.Destroy(true); err != nil {
+		return err
+	}
+
 	return nil
 }
