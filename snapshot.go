@@ -43,6 +43,9 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 
 	ds, err := zfs.GetDataset(request.Id)
 	if err != nil {
+		if isZfsNotFound(err) {
+			return NotFound
+		}
 		return err
 	}
 	if ds.Type == "snapshot" {
@@ -85,6 +88,9 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 func (store *ImageStore) getSnapshot(id string) (*zfs.Dataset, error) {
 	ds, err := zfs.GetDataset(id)
 	if err != nil {
+		if isZfsNotFound(err) {
+			return nil, NotFound
+		}
 		return nil, err
 	}
 
@@ -103,6 +109,9 @@ func (store *ImageStore) getSnapshotsRecursive(id string) ([]*zfs.Dataset, error
 
 	datasets, err := zfs.Snapshots(splitID[0])
 	if err != nil {
+		if isZfsNotFound(err) {
+			return nil, NotFound
+		}
 		return nil, err
 	}
 
@@ -195,6 +204,9 @@ func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotReq
 
 	datasets, err := zfs.Snapshots(filter)
 	if err != nil {
+		if isZfsNotFound(err) {
+			return NotFound
+		}
 		return err
 	}
 
@@ -246,7 +258,7 @@ func (store *ImageStore) DownloadSnapshot(w http.ResponseWriter, r *http.Request
 
 	s, err := store.getSnapshot(request.Id)
 	if err != nil {
-		if err == NotSnapshot || strings.Contains(err.Error(), "does not exist") {
+		if err == NotSnapshot || err == NotFound {
 			http.Error(w, err.Error(), 404)
 			return
 		}
