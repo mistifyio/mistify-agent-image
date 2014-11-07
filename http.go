@@ -7,7 +7,7 @@ import (
 
 // TODO: the core rpc should have some generic ping, logging, and stats handlers
 
-func (store *ImageStore) RunHTTP(port int) error {
+func (store *ImageStore) RunHTTP(port uint) error {
 	s, _ := rpc.NewServer(port)
 	s.RegisterService(store)
 	return s.ListenAndServe()
