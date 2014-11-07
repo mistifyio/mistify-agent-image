@@ -10,7 +10,7 @@ import (
 
 func main() {
 	var zpool, logLevel string
-	var port int
+	var port uint
 	var h bool
 
 	flag.BoolVar(&h, []string{"h", "#help", "-help"}, false, "display the help")
