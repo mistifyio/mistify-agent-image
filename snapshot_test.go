@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/bakins/test-helpers"
+	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent-image"
 	"github.com/mistifyio/mistify-agent/rpc"
 )
@@ -19,6 +21,23 @@ var default_zfs_options map[string]string = map[string]string{
 
 // TODO: Make these all more robust instead of relying on human knowledge
 // of the test pool and ImageStore defaults
+
+var zpool string = "test"
+var parentName string = "testParent"
+var childName string = "testChild"
+
+func getParentDatasetId() string {
+	return filepath.Join(zpool, parentName)
+}
+func getChildDatasetId() string {
+	return filepath.Join(getParentDatasetId(), childName)
+}
+func getParentSnapshotId(snapshotName string) string {
+	return fmt.Sprintf("%s@%s", getParentDatasetId(), snapshotName)
+}
+func getChildSnapshotId(snapshotName string) string {
+	return fmt.Sprintf("%s@%s", getChildDatasetId(), snapshotName)
+}
 
 func checkSnapshotResults(t *testing.T, r *rpc.SnapshotResponse, names ...string) {
 	snapshots := r.Snapshots
@@ -32,16 +51,16 @@ func createSnapshot(t *testing.T, store *imagestore.ImageStore, recursive bool) 
 	snapshotName := fmt.Sprintf("snap-%v", time.Now().Unix())
 	response := &rpc.SnapshotResponse{}
 	request := &rpc.SnapshotRequest{
-		Id:        "test",
+		Id:        parentName,
 		Dest:      snapshotName,
 		Recursive: recursive,
 	}
 	err := store.CreateSnapshot(&http.Request{}, request, response)
 	helpers.Ok(t, err)
 	if recursive {
-		checkSnapshotResults(t, response, "test@"+snapshotName, "test/images@"+snapshotName)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName), getChildSnapshotId(snapshotName))
 	} else {
-		checkSnapshotResults(t, response, "test@"+snapshotName)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
 	}
 
 	// Sleep to minimize name collisions
@@ -50,20 +69,30 @@ func createSnapshot(t *testing.T, store *imagestore.ImageStore, recursive bool) 
 	return snapshotName
 }
 
-func TestCreateSnapshot(t *testing.T) {
+func withFilesystems(t *testing.T, fn func(store *imagestore.ImageStore, t *testing.T)) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+		_, err := zfs.CreateFilesystem(getParentDatasetId(), default_zfs_options)
+		helpers.Ok(t, err)
+		_, err = zfs.CreateFilesystem(getChildDatasetId(), default_zfs_options)
+		helpers.Ok(t, err)
+		fn(store, t)
+	})
+}
+
+func TestCreateSnapshot(t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		_ = createSnapshot(t, store, false)
 	})
 }
 
 func TestCreateSnapshotRecursive(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		_ = createSnapshot(t, store, true)
 	})
 }
 
 func TestListSnapshots(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		// List on a clean setup
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{}
@@ -78,94 +107,94 @@ func TestListSnapshots(t *testing.T) {
 		request = &rpc.SnapshotRequest{}
 		err = store.ListSnapshots(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, "test@"+snapshotName, "test/images@"+snapshotName)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName), getChildSnapshotId(snapshotName))
 
 		// List from the descendent
 		request = &rpc.SnapshotRequest{
-			Id: "test/images",
+			Id: filepath.Join(parentName, childName),
 		}
 		err = store.ListSnapshots(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, "test/images@"+snapshotName)
+		checkSnapshotResults(t, response, getChildSnapshotId(snapshotName))
 	})
 }
 
 func TestGetSnapshot(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, true)
 
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id: "test@" + snapshotName,
+			Id: fmt.Sprintf("%s@%s", parentName, snapshotName),
 		}
 		err := store.GetSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, "test@"+snapshotName)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
 	})
 }
 
 func TestDeleteSnapshot(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, true)
 
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id: "test@" + snapshotName,
+			Id: fmt.Sprintf("%s@%s", parentName, snapshotName),
 		}
 		err := store.DeleteSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, "test@"+snapshotName)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
 	})
 }
 
 func TestDeleteSnapshotRecursive(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, true)
 
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id:        "test@" + snapshotName,
+			Id:        fmt.Sprintf("%s@%s", parentName, snapshotName),
 			Recursive: true,
 		}
 		err := store.DeleteSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, "test@"+snapshotName, "test/images@"+snapshotName)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName), getChildSnapshotId(snapshotName))
 	})
 }
 
 func TestRollbackSnapshot(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, false)
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id: "test@" + snapshotName,
+			Id: fmt.Sprintf("%s@%s", parentName, snapshotName),
 		}
 		err := store.RollbackSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, "test@"+snapshotName)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
 	})
 }
 
 func TestRollbackSnapshotOlder(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName1 := createSnapshot(t, store, false)
 		_ = createSnapshot(t, store, false)
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id:                "test@" + snapshotName1,
+			Id:                fmt.Sprintf("%s@%s", parentName, snapshotName1),
 			DestroyMoreRecent: true,
 		}
 		err := store.RollbackSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, "test@"+snapshotName1)
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName1))
 	})
 }
 
 func TestDownloadSnapshot(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, false)
 
-		postBody := bytes.NewBufferString(`{"id": "test@` + snapshotName + `"}`)
+		postBody := bytes.NewBufferString(fmt.Sprintf(`{"id": "%s@%s"}`, parentName, snapshotName))
 		req, err := http.NewRequest("POST", "http://127.0.0.1/snapshots/download", postBody)
 		helpers.Ok(t, err)
 

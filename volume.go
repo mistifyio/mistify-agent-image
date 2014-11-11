@@ -48,7 +48,8 @@ func (store *ImageStore) CreateVolume(r *http.Request, request *rpc.VolumeReques
 		return errors.New("need an id")
 	}
 
-	ds, err := zfs.CreateVolume(request.Id, request.Size*1024*1024, default_zfs_options)
+	fullId := filepath.Join(store.config.Zpool, request.Id)
+	ds, err := zfs.CreateVolume(fullId, request.Size*1024*1024, default_zfs_options)
 	if err != nil {
 		return err
 	}
@@ -63,7 +64,8 @@ func (store *ImageStore) CreateVolume(r *http.Request, request *rpc.VolumeReques
 }
 
 func (store *ImageStore) GetVolume(r *http.Request, request *rpc.VolumeRequest, response *rpc.VolumeResponse) error {
-	ds, err := zfs.GetDataset(request.Id)
+	fullId := filepath.Join(store.config.Zpool, request.Id)
+	ds, err := zfs.GetDataset(fullId)
 	if err != nil {
 		return err
 	}
@@ -81,7 +83,8 @@ func (store *ImageStore) DeleteDataset(r *http.Request, request *rpc.VolumeReque
 	if request.Id == "" {
 		return errors.New("need an id")
 	}
-	ds, err := zfs.GetDataset(request.Id)
+	fullId := filepath.Join(store.config.Zpool, request.Id)
+	ds, err := zfs.GetDataset(fullId)
 	if err != nil {
 	}
 
