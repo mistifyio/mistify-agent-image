@@ -15,7 +15,7 @@ func main() {
 
 	flag.BoolVar(&h, []string{"h", "#help", "-help"}, false, "display the help")
 	flag.IntVar(&port, []string{"p", "#port", "-port"}, 19999, "listen port")
-	flag.StringVar(&zpool, []string{"z", "#zpool", "-zpool"}, "guests", "zpool")
+	flag.StringVar(&zpool, []string{"z", "#zpool", "-zpool"}, "mistify", "zpool")
 	flag.StringVar(&logLevel, []string{"l", "-log-level"}, "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
 

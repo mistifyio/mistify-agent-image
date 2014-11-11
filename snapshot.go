@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -41,7 +42,8 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return errors.New("need an id")
 	}
 
-	ds, err := zfs.GetDataset(request.Id)
+	fullId := filepath.Join(store.config.Zpool, request.Id)
+	ds, err := zfs.GetDataset(fullId)
 	if err != nil {
 		if isZfsNotFound(err) {
 			return NotFound
@@ -86,7 +88,8 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 }
 
 func (store *ImageStore) getSnapshot(id string) (*zfs.Dataset, error) {
-	ds, err := zfs.GetDataset(id)
+	fullId := filepath.Join(store.config.Zpool, id)
+	ds, err := zfs.GetDataset(fullId)
 	if err != nil {
 		if isZfsNotFound(err) {
 			return nil, NotFound
@@ -197,12 +200,8 @@ ListSnapshots retrieves a list of all snapshots for a dataset.
     id        string :     : Dataset to list snapshots for
 */
 func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
-	filter := store.config.Zpool
-	if request.Id != "" {
-		filter = request.Id
-	}
-
-	datasets, err := zfs.Snapshots(filter)
+	fullId := filepath.Join(store.config.Zpool, request.Id)
+	datasets, err := zfs.Snapshots(fullId)
 	if err != nil {
 		if isZfsNotFound(err) {
 			return NotFound
