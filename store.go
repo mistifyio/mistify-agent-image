@@ -35,6 +35,7 @@ var (
 	NotFound    = errors.New("not found")
 	NotVolume   = errors.New("not a volume")
 	NotSnapshot = errors.New("not a snapshot")
+	NotValid    = errors.New("not a valid dataset")
 )
 
 type (

@@ -48,6 +48,9 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		if isZfsNotFound(err) {
 			return NotFound
 		}
+		if isZfsInvalid(err) {
+			return NotValid
+		}
 		return err
 	}
 	if ds.Type == "snapshot" {
@@ -93,6 +96,9 @@ func (store *ImageStore) getSnapshot(id string) (*zfs.Dataset, error) {
 	if err != nil {
 		if isZfsNotFound(err) {
 			return nil, NotFound
+		}
+		if isZfsInvalid(err) {
+			return nil, NotValid
 		}
 		return nil, err
 	}
@@ -257,8 +263,12 @@ func (store *ImageStore) DownloadSnapshot(w http.ResponseWriter, r *http.Request
 
 	s, err := store.getSnapshot(request.Id)
 	if err != nil {
-		if err == NotSnapshot || err == NotFound {
+		if err == NotFound {
 			http.Error(w, err.Error(), 404)
+			return
+		}
+		if err == NotSnapshot || err == NotValid {
+			http.Error(w, err.Error(), 400)
 			return
 		}
 		http.Error(w, err.Error(), 500)

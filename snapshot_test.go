@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,24 +20,74 @@ var default_zfs_options map[string]string = map[string]string{
 	"compression": "lz4",
 }
 
-// TODO: Make these all more robust instead of relying on human knowledge
-// of the test pool and ImageStore defaults
+var (
+	zpool      string = "test"
+	parentName string = "testParent"
+	childName  string = "testChild"
+)
 
-var zpool string = "test"
-var parentName string = "testParent"
-var childName string = "testChild"
+func getParentDatasetId(withZpool bool) string {
+	if withZpool {
+		return filepath.Join(zpool, parentName)
+	} else {
+		return parentName
+	}
+}
 
-func getParentDatasetId() string {
-	return filepath.Join(zpool, parentName)
+func getChildDatasetId(withZpool bool) string {
+	return filepath.Join(getParentDatasetId(withZpool), childName)
 }
-func getChildDatasetId() string {
-	return filepath.Join(getParentDatasetId(), childName)
+
+func getParentSnapshotId(snapshotName string, withZpool bool) string {
+	return fmt.Sprintf("%s@%s", getParentDatasetId(withZpool), snapshotName)
 }
-func getParentSnapshotId(snapshotName string) string {
-	return fmt.Sprintf("%s@%s", getParentDatasetId(), snapshotName)
+
+func getChildSnapshotId(snapshotName string, withZpool bool) string {
+	return fmt.Sprintf("%s@%s", getChildDatasetId(withZpool), snapshotName)
 }
-func getChildSnapshotId(snapshotName string) string {
-	return fmt.Sprintf("%s@%s", getChildDatasetId(), snapshotName)
+
+func missingIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error) {
+	response := &rpc.SnapshotResponse{}
+	request := &rpc.SnapshotRequest{}
+	err := fn(&http.Request{}, request, response)
+	helpers.Equals(t, "need an id", err.Error())
+}
+
+func notFoundIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error) {
+	response := &rpc.SnapshotResponse{}
+	request := &rpc.SnapshotRequest{
+		Id: "querty",
+	}
+	err := fn(&http.Request{}, request, response)
+	helpers.Equals(t, imagestore.NotFound, err)
+}
+
+func notValidIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error) {
+	response := &rpc.SnapshotResponse{}
+	request := &rpc.SnapshotRequest{
+		Id: "querty@",
+	}
+	err := fn(&http.Request{}, request, response)
+	helpers.Equals(t, imagestore.NotValid, err)
+}
+
+func notSnapshotIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error) {
+	response := &rpc.SnapshotResponse{}
+	request := &rpc.SnapshotRequest{
+		Id: parentName,
+	}
+	err := fn(&http.Request{}, request, response)
+	helpers.Equals(t, imagestore.NotSnapshot, err)
+}
+
+func testIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error, requireSnapshot bool) {
+	missingIdParam(t, fn)
+	notFoundIdParam(t, fn)
+	notValidIdParam(t, fn)
+
+	if requireSnapshot {
+		notSnapshotIdParam(t, fn)
+	}
 }
 
 func checkSnapshotResults(t *testing.T, r *rpc.SnapshotResponse, names ...string) {
@@ -58,9 +109,9 @@ func createSnapshot(t *testing.T, store *imagestore.ImageStore, recursive bool) 
 	err := store.CreateSnapshot(&http.Request{}, request, response)
 	helpers.Ok(t, err)
 	if recursive {
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName), getChildSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName, true), getChildSnapshotId(snapshotName, true))
 	} else {
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName, true))
 	}
 
 	// Sleep to minimize name collisions
@@ -71,9 +122,9 @@ func createSnapshot(t *testing.T, store *imagestore.ImageStore, recursive bool) 
 
 func withFilesystems(t *testing.T, fn func(store *imagestore.ImageStore, t *testing.T)) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
-		_, err := zfs.CreateFilesystem(getParentDatasetId(), default_zfs_options)
+		_, err := zfs.CreateFilesystem(getParentDatasetId(true), default_zfs_options)
 		helpers.Ok(t, err)
-		_, err = zfs.CreateFilesystem(getChildDatasetId(), default_zfs_options)
+		_, err = zfs.CreateFilesystem(getChildDatasetId(true), default_zfs_options)
 		helpers.Ok(t, err)
 		fn(store, t)
 	})
@@ -81,7 +132,34 @@ func withFilesystems(t *testing.T, fn func(store *imagestore.ImageStore, t *test
 
 func TestCreateSnapshot(t *testing.T) {
 	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
-		_ = createSnapshot(t, store, false)
+		testIdParam(t, store.CreateSnapshot, false)
+
+		response := &rpc.SnapshotResponse{}
+		request := &rpc.SnapshotRequest{
+			Id: parentName,
+		}
+
+		// No dest
+		err := store.CreateSnapshot(&http.Request{}, request, response)
+		helpers.Equals(t, "need a dest", err.Error())
+
+		// Invalid dest
+		request.Dest = "-?_&"
+		err = store.CreateSnapshot(&http.Request{}, request, response)
+		helpers.Equals(t, "invalid snapshot dest", err.Error())
+
+		// Successful
+		snapshotName := createSnapshot(t, store, false)
+
+		// Snapshot already exists
+		request.Dest = snapshotName
+		err = store.CreateSnapshot(&http.Request{}, request, response)
+		helpers.Assert(t, strings.Contains(err.Error(), "dataset already exists"), "Wrong error for existing snapshot")
+
+		// Snapshot of a snapshot
+		request.Id = getParentSnapshotId(snapshotName, false)
+		err = store.CreateSnapshot(&http.Request{}, request, response)
+		helpers.Equals(t, "cannot create a snapshot of a snapshot", err.Error())
 	})
 }
 
@@ -93,8 +171,11 @@ func TestCreateSnapshotRecursive(t *testing.T) {
 
 func TestListSnapshots(t *testing.T) {
 	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
-		// List on a clean setup
+		notFoundIdParam(t, store.ListSnapshots)
+
 		response := &rpc.SnapshotResponse{}
+
+		// List on a clean setup
 		request := &rpc.SnapshotRequest{}
 		err := store.ListSnapshots(&http.Request{}, request, response)
 		helpers.Ok(t, err)
@@ -107,43 +188,48 @@ func TestListSnapshots(t *testing.T) {
 		request = &rpc.SnapshotRequest{}
 		err = store.ListSnapshots(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName), getChildSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName, true), getChildSnapshotId(snapshotName, true))
 
 		// List from the descendent
 		request = &rpc.SnapshotRequest{
-			Id: filepath.Join(parentName, childName),
+			Id: getChildDatasetId(false),
 		}
 		err = store.ListSnapshots(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, getChildSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getChildSnapshotId(snapshotName, true))
 	})
 }
 
 func TestGetSnapshot(t *testing.T) {
 	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
+		testIdParam(t, store.GetSnapshot, true)
 		snapshotName := createSnapshot(t, store, true)
 
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id: fmt.Sprintf("%s@%s", parentName, snapshotName),
+			Id: getParentSnapshotId(snapshotName, false),
 		}
+
 		err := store.GetSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName, true))
 	})
 }
 
 func TestDeleteSnapshot(t *testing.T) {
 	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
+		testIdParam(t, store.DeleteSnapshot, true)
+
 		snapshotName := createSnapshot(t, store, true)
 
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id: fmt.Sprintf("%s@%s", parentName, snapshotName),
+			Id: getParentSnapshotId(snapshotName, false),
 		}
+
 		err := store.DeleteSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName, true))
 	})
 }
 
@@ -153,25 +239,28 @@ func TestDeleteSnapshotRecursive(t *testing.T) {
 
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id:        fmt.Sprintf("%s@%s", parentName, snapshotName),
+			Id:        getParentSnapshotId(snapshotName, false),
 			Recursive: true,
 		}
 		err := store.DeleteSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName), getChildSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName, true), getChildSnapshotId(snapshotName, true))
 	})
 }
 
 func TestRollbackSnapshot(t *testing.T) {
 	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
+		testIdParam(t, store.DeleteSnapshot, true)
+
 		snapshotName := createSnapshot(t, store, false)
+
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id: fmt.Sprintf("%s@%s", parentName, snapshotName),
+			Id: getParentSnapshotId(snapshotName, false),
 		}
 		err := store.RollbackSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName, true))
 	})
 }
 
@@ -181,25 +270,30 @@ func TestRollbackSnapshotOlder(t *testing.T) {
 		_ = createSnapshot(t, store, false)
 		response := &rpc.SnapshotResponse{}
 		request := &rpc.SnapshotRequest{
-			Id:                fmt.Sprintf("%s@%s", parentName, snapshotName1),
+			Id:                getParentSnapshotId(snapshotName1, false),
 			DestroyMoreRecent: true,
 		}
 		err := store.RollbackSnapshot(&http.Request{}, request, response)
 		helpers.Ok(t, err)
-		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName1))
+		checkSnapshotResults(t, response, getParentSnapshotId(snapshotName1, true))
 	})
+}
+
+func testDownload(t *testing.T, store *imagestore.ImageStore, snapshotName string, expectedCode int) {
+	postBody := bytes.NewBufferString(fmt.Sprintf(`{"id": "%s"}`, getParentSnapshotId(snapshotName, false)))
+	req, err := http.NewRequest("POST", "http://127.0.0.1/snapshots/download", postBody)
+	helpers.Ok(t, err)
+
+	w := httptest.NewRecorder()
+	store.DownloadSnapshot(w, req)
+	helpers.Equals(t, expectedCode, w.Code)
 }
 
 func TestDownloadSnapshot(t *testing.T) {
 	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, false)
-
-		postBody := bytes.NewBufferString(fmt.Sprintf(`{"id": "%s@%s"}`, parentName, snapshotName))
-		req, err := http.NewRequest("POST", "http://127.0.0.1/snapshots/download", postBody)
-		helpers.Ok(t, err)
-
-		w := httptest.NewRecorder()
-		store.DownloadSnapshot(w, req)
-		helpers.Equals(t, 200, w.Code)
+		testDownload(t, store, "", 400)
+		testDownload(t, store, "qwerty", 404)
+		testDownload(t, store, snapshotName, 200)
 	})
 }

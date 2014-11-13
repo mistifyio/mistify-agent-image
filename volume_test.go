@@ -45,6 +45,17 @@ func withImageStore(t *testing.T, fn func(store *imagestore.ImageStore, t *testi
 	fn(store, t)
 }
 
+func createVolume(t *testing.T, store *imagestore.ImageStore) {
+	response := &rpc.VolumeResponse{}
+	request := &rpc.VolumeRequest{
+		Id:   "test-volume",
+		Size: 64,
+	}
+	err := store.CreateVolume(&http.Request{}, request, response)
+	helpers.Ok(t, err)
+	helpers.Equals(t, 1, len(response.Volumes))
+}
+
 func TestListVolumes(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		response := &rpc.VolumeResponse{}
@@ -57,11 +68,69 @@ func TestListVolumes(t *testing.T) {
 func TestCreateVolume(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		response := &rpc.VolumeResponse{}
-		request := &rpc.VolumeRequest{
-			Size: 64,
-			Id:   "test/test-volume",
-		}
+		request := &rpc.VolumeRequest{}
+
+		// Invalid size
 		err := store.CreateVolume(&http.Request{}, request, response)
+		helpers.Equals(t, "need a valid size", err.Error())
+
+		// Missing Id
+		request.Size = 64
+		err = store.CreateVolume(&http.Request{}, request, response)
+		helpers.Equals(t, "need an id", err.Error())
+
+		createVolume(t, store)
+	})
+}
+
+func TestGetVolume(t *testing.T) {
+	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+		createVolume(t, store)
+		_, err := zfs.CreateFilesystem("test/test2", default_zfs_options)
+		helpers.Ok(t, err)
+
+		response := &rpc.VolumeResponse{}
+		request := &rpc.VolumeRequest{}
+
+		// Missing Id
+		err = store.GetVolume(&http.Request{}, request, response)
+		helpers.Equals(t, "need an id", err.Error())
+
+		// Not a volume
+		request.Id = "test2"
+		err = store.GetVolume(&http.Request{}, request, response)
+		helpers.Equals(t, imagestore.NotVolume, err)
+
+		request.Id = "test-volume"
+		err = store.GetVolume(&http.Request{}, request, response)
+		helpers.Ok(t, err)
+		helpers.Equals(t, 1, len(response.Volumes))
+	})
+}
+
+func TestDeleteDataset(t *testing.T) {
+	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
+		createVolume(t, store)
+
+		response := &rpc.VolumeResponse{}
+		request := &rpc.VolumeRequest{}
+
+		// Missing Id
+		err := store.DeleteDataset(&http.Request{}, request, response)
+		helpers.Equals(t, "need an id", err.Error())
+
+		// Not found
+		request.Id = "foobar"
+		err = store.DeleteDataset(&http.Request{}, request, response)
+		helpers.Equals(t, imagestore.NotFound, err)
+
+		// Invalid
+		request.Id = "test-volume*"
+		err = store.DeleteDataset(&http.Request{}, request, response)
+		helpers.Equals(t, imagestore.NotValid, err)
+
+		request.Id = "test-volume"
+		err = store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Ok(t, err)
 		helpers.Equals(t, 1, len(response.Volumes))
 	})
