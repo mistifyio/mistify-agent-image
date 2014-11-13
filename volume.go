@@ -2,10 +2,11 @@ package imagestore
 
 import (
 	"errors"
-	"github.com/mistifyio/go-zfs"
-	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
 	"path/filepath"
+
+	"github.com/mistifyio/mistify-agent/rpc"
+	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
 type ()

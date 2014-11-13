@@ -2,7 +2,8 @@ package imagestore
 
 import (
 	"fmt"
-	"github.com/mistifyio/go-zfs"
+
+	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
 type (

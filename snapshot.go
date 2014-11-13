@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
+	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
 var validName = regexp.MustCompile(`^[a-zA-Z0-9_\-:\.]+$`)

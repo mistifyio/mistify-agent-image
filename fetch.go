@@ -3,12 +3,13 @@ package imagestore
 import (
 	"compress/gzip"
 	"fmt"
-	"github.com/mistifyio/go-zfs"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
 type (
