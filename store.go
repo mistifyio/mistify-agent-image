@@ -16,10 +16,10 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/client"
 	"github.com/mistifyio/mistify-agent/rpc"
+	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
 const (

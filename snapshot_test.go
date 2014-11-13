@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/bakins/test-helpers"
-	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent-image"
 	"github.com/mistifyio/mistify-agent/rpc"
+	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
 var default_zfs_options map[string]string = map[string]string{
