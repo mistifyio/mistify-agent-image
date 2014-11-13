@@ -2,8 +2,8 @@ package imagestore
 
 import (
 	"errors"
-	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/go-zfs"
+	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/rpc"
 	"net/http"
 	"strings"
@@ -16,6 +16,13 @@ func isZfsNotFound(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "does not exist")
+}
+
+func isZfsInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "invalid dataset name")
 }
 
 // XXX: should these be serialized through a channel like clones are?
