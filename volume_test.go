@@ -108,7 +108,7 @@ func TestGetVolume(t *testing.T) {
 	})
 }
 
-func DeleteDataset(t *testing.T) {
+func TestDeleteDataset(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		createVolume(t, store)
 
@@ -116,21 +116,21 @@ func DeleteDataset(t *testing.T) {
 		request := &rpc.VolumeRequest{}
 
 		// Missing Id
-		err := store.GetVolume(&http.Request{}, request, response)
+		err := store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Equals(t, "need an id", err.Error())
 
 		// Not found
 		request.Id = "foobar"
-		err = store.GetVolume(&http.Request{}, request, response)
+		err = store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Equals(t, imagestore.NotFound, err)
 
 		// Invalid
 		request.Id = "test-volume*"
-		err = store.GetVolume(&http.Request{}, request, response)
+		err = store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Equals(t, imagestore.NotValid, err)
 
 		request.Id = "test-volume"
-		err = store.GetVolume(&http.Request{}, request, response)
+		err = store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Ok(t, err)
 		helpers.Equals(t, 1, len(response.Volumes))
 	})
