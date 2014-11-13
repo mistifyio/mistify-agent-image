@@ -10,11 +10,11 @@ import (
 
 func main() {
 	var zpool, logLevel string
-	var port int
+	var port uint
 	var h bool
 
 	flag.BoolVar(&h, []string{"h", "#help", "-help"}, false, "display the help")
-	flag.IntVar(&port, []string{"p", "#port", "-port"}, 19999, "listen port")
+	flag.UintVar(&port, []string{"p", "#port", "-port"}, 19999, "listen port")
 	flag.StringVar(&zpool, []string{"z", "#zpool", "-zpool"}, "mistify", "zpool")
 	flag.StringVar(&logLevel, []string{"l", "-log-level"}, "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
