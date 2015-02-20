@@ -192,7 +192,7 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 		log.WithFields(log.Fields{
 			"error": response.err,
 			"func":  "imagestore.ImageStore.handleFetchResponse",
-		}).Fatal(err)
+		}).Fatal(response.err)
 		return
 	}
 	image := rpc.Image{
@@ -207,7 +207,7 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 	if err != nil {
 		// destroy dataset?? set an error??
 		log.WithFields(log.Fields{
-			"error": response.err,
+			"error": err,
 			"func":  "json.Marshal",
 		}).Fatal(err)
 		return
@@ -218,7 +218,7 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 		if err != nil {
 			// destroy dataset??
 			log.WithFields(log.Fields{
-				"error": response.err,
+				"error": err,
 				"func":  "kvite.Tx.CreateBucketIfNotExists",
 			}).Fatal(err)
 			return err
@@ -286,7 +286,7 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 	if err != nil {
 		// destroy dataset?? set an error??
 		log.WithFields(log.Fields{
-			"error": response.err,
+			"error": err,
 			"func":  "json.Marshal",
 		}).Fatal(err)
 	} else {
@@ -296,7 +296,7 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 			if err != nil {
 				// destroy dataset??
 				log.WithFields(log.Fields{
-					"error": response.err,
+					"error": err,
 					"func":  "kvite.Tx.CreateBucketIfNotExists",
 				}).Fatal(err)
 				return err

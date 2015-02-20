@@ -56,7 +56,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err = imagestore.store.RunHTTP(port); err != nil {
+		if err = store.RunHTTP(port); err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
 				"func":  "imagestore.ImageStore.RunHTTP",
