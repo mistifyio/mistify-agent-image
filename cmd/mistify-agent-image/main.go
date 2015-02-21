@@ -1,11 +1,12 @@
 package main
 
 import (
-	flag "github.com/docker/docker/pkg/mflag"
-	"github.com/mistifyio/mistify-agent-image"
-	"github.com/mistifyio/mistify-agent/log"
 	"os"
 	"sync"
+
+	"github.com/mistifyio/mistify-agent-image"
+	"github.com/mistifyio/mistify-agent/log"
+	flag "github.com/spf13/pflag"
 )
 
 func main() {
@@ -13,10 +14,10 @@ func main() {
 	var port uint
 	var h bool
 
-	flag.BoolVar(&h, []string{"h", "#help", "-help"}, false, "display the help")
-	flag.UintVar(&port, []string{"p", "#port", "-port"}, 19999, "listen port")
-	flag.StringVar(&zpool, []string{"z", "#zpool", "-zpool"}, "mistify", "zpool")
-	flag.StringVar(&logLevel, []string{"l", "-log-level"}, "warning", "log level: debug/info/warning/error/critical/fatal")
+	flag.BoolVarP(&h, "help", "h", false, "display the help")
+	flag.UintVarP(&port, "port", "p", 19999, "listen port")
+	flag.StringVarP(&zpool, "zpool", "z", "mistify", "zpool")
+	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
 
 	if h {
