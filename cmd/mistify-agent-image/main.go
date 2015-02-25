@@ -1,29 +1,21 @@
 package main
 
 import (
-	"os"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
-	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/mistifyio/mistify-agent-image"
+	flag "github.com/spf13/pflag"
 )
 
 func main() {
 	var zpool, logLevel string
 	var port uint
-	var h bool
 
-	flag.BoolVar(&h, []string{"h", "#help", "-help"}, false, "display the help")
-	flag.UintVar(&port, []string{"p", "#port", "-port"}, 19999, "listen port")
-	flag.StringVar(&zpool, []string{"z", "#zpool", "-zpool"}, "mistify", "zpool")
-	flag.StringVar(&logLevel, []string{"l", "-log-level"}, "warning", "log level: debug/info/warning/error/critical/fatal")
+	flag.UintVarP(&port, "port", "p", 19999, "listen port")
+	flag.StringVarP(&zpool, "zpool", "z", "mistify", "zpool")
+	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
-
-	if h {
-		flag.PrintDefaults()
-		os.Exit(0)
-	}
 
 	log.SetFormatter(&log.JSONFormatter{})
 	level, err := log.ParseLevel(logLevel)
