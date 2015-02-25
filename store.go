@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/client"
 	"github.com/mistifyio/mistify-agent/rpc"
@@ -188,7 +189,10 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 	store.Jobs.Delete(request.name)
 
 	if response.err != nil {
-		// log??
+		log.WithFields(log.Fields{
+			"error": response.err,
+			"func":  "imagestore.ImageStore.handleFetchResponse",
+		}).Fatal(response.err)
 		return
 	}
 	image := rpc.Image{
@@ -201,14 +205,22 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 
 	val, err := json.Marshal(image)
 	if err != nil {
-		// log?? destroy dataset?? set an error??
+		// destroy dataset?? set an error??
+		log.WithFields(log.Fields{
+			"error": err,
+			"func":  "json.Marshal",
+		}).Fatal(err)
 		return
 	}
 	// what if we get an error??
 	store.DB.Transaction(func(tx *kvite.Tx) error {
 		b, err := tx.CreateBucketIfNotExists("images")
 		if err != nil {
-			// log?? destroy dataset??
+			// destroy dataset??
+			log.WithFields(log.Fields{
+				"error": err,
+				"func":  "kvite.Tx.CreateBucketIfNotExists",
+			}).Fatal(err)
 			return err
 		}
 		return b.Put(request.name, val)
@@ -272,13 +284,21 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 
 	val, err := json.Marshal(image)
 	if err != nil {
-		// log?? destroy dataset?? set an error??
+		// destroy dataset?? set an error??
+		log.WithFields(log.Fields{
+			"error": err,
+			"func":  "json.Marshal",
+		}).Fatal(err)
 	} else {
 		// what if we get an error??
 		store.DB.Transaction(func(tx *kvite.Tx) error {
 			b, err := tx.CreateBucketIfNotExists("images")
 			if err != nil {
-				// log?? destroy dataset??
+				// destroy dataset??
+				log.WithFields(log.Fields{
+					"error": err,
+					"func":  "kvite.Tx.CreateBucketIfNotExists",
+				}).Fatal(err)
 				return err
 			}
 			return b.Put(request.name, val)

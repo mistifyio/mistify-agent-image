@@ -3,8 +3,8 @@ package main
 import (
 	"sync"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/mistifyio/mistify-agent-image"
-	"github.com/mistifyio/mistify-agent/log"
 	flag "github.com/spf13/pflag"
 )
 
@@ -17,15 +17,24 @@ func main() {
 	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
 
-	if err := log.SetLogLevel(logLevel); err != nil {
-		log.Fatal(err)
+	log.SetFormatter(&log.JSONFormatter{})
+	level, err := log.ParseLevel(logLevel)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+			"func":  "log.ParseLevel",
+		}).Fatal(err)
 	}
+	log.SetLevel(level)
 
 	store, err := imagestore.Create(imagestore.Config{
 		Zpool: zpool,
 	})
 	if err != nil {
-		log.Fatal(err)
+		log.WithFields(log.Fields{
+			"error": err,
+			"func":  "imagestore.Create",
+		}).Fatal(err)
 	}
 
 	var wg sync.WaitGroup
@@ -39,7 +48,12 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Fatal(store.RunHTTP(port))
+		if err = store.RunHTTP(port); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+				"func":  "imagestore.ImageStore.RunHTTP",
+			}).Fatal(err)
+		}
 	}()
 
 	wg.Wait()
