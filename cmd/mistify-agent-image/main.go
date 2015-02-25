@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"sync"
 
 	"github.com/mistifyio/mistify-agent-image"
@@ -12,18 +11,11 @@ import (
 func main() {
 	var zpool, logLevel string
 	var port uint
-	var h bool
 
-	flag.BoolVarP(&h, "help", "h", false, "display the help")
 	flag.UintVarP(&port, "port", "p", 19999, "listen port")
 	flag.StringVarP(&zpool, "zpool", "z", "mistify", "zpool")
 	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
-
-	if h {
-		flag.PrintDefaults()
-		os.Exit(0)
-	}
 
 	if err := log.SetLogLevel(logLevel); err != nil {
 		log.Fatal(err)
