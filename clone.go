@@ -39,7 +39,7 @@ func (c *cloneWorker) Exit() {
 	c.timeToDie <- q
 }
 
-var default_zfs_options map[string]string = map[string]string{
+var defaultZFSOptions = map[string]string{
 	"compression": "lz4",
 }
 
@@ -74,7 +74,7 @@ func (c *cloneWorker) Run() {
 				if err != nil {
 					response.err = err
 				} else {
-					d, err := s.Clone(req.dest, default_zfs_options)
+					d, err := s.Clone(req.dest, defaultZFSOptions)
 					response.err = err
 					response.dataset = d
 				}

@@ -42,14 +42,14 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 		return errors.New("need an id")
 	}
 
-	fullId := filepath.Join(store.config.Zpool, request.Id)
-	ds, err := zfs.GetDataset(fullId)
+	fullID := filepath.Join(store.config.Zpool, request.Id)
+	ds, err := zfs.GetDataset(fullID)
 	if err != nil {
 		if isZfsNotFound(err) {
-			return NotFound
+			return ErrNotFound
 		}
 		if isZfsInvalid(err) {
-			return NotValid
+			return ErrNotValid
 		}
 		return err
 	}
@@ -91,20 +91,20 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 }
 
 func (store *ImageStore) getSnapshot(id string) (*zfs.Dataset, error) {
-	fullId := filepath.Join(store.config.Zpool, id)
-	ds, err := zfs.GetDataset(fullId)
+	fullID := filepath.Join(store.config.Zpool, id)
+	ds, err := zfs.GetDataset(fullID)
 	if err != nil {
 		if isZfsNotFound(err) {
-			return nil, NotFound
+			return nil, ErrNotFound
 		}
 		if isZfsInvalid(err) {
-			return nil, NotValid
+			return nil, ErrNotValid
 		}
 		return nil, err
 	}
 
 	if ds.Type != "snapshot" {
-		return nil, NotSnapshot
+		return nil, ErrNotSnapshot
 	}
 
 	return ds, nil
@@ -119,7 +119,7 @@ func (store *ImageStore) getSnapshotsRecursive(id string) ([]*zfs.Dataset, error
 	datasets, err := zfs.Snapshots(splitID[0])
 	if err != nil {
 		if isZfsNotFound(err) {
-			return nil, NotFound
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}
@@ -206,11 +206,11 @@ ListSnapshots retrieves a list of all snapshots for a dataset.
     id        string :     : Dataset to list snapshots for
 */
 func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
-	fullId := filepath.Join(store.config.Zpool, request.Id)
-	datasets, err := zfs.Snapshots(fullId)
+	fullID := filepath.Join(store.config.Zpool, request.Id)
+	datasets, err := zfs.Snapshots(fullID)
 	if err != nil {
 		if isZfsNotFound(err) {
-			return NotFound
+			return ErrNotFound
 		}
 		return err
 	}
@@ -221,6 +221,7 @@ func (store *ImageStore) ListSnapshots(r *http.Request, request *rpc.SnapshotReq
 	return nil
 }
 
+// RollbackSnapshot performs a zfs snapshot rollback
 func (store *ImageStore) RollbackSnapshot(r *http.Request, request *rpc.SnapshotRequest, response *rpc.SnapshotResponse) error {
 	if request.Id == "" {
 		return errors.New("need an id")
@@ -263,11 +264,11 @@ func (store *ImageStore) DownloadSnapshot(w http.ResponseWriter, r *http.Request
 
 	s, err := store.getSnapshot(request.Id)
 	if err != nil {
-		if err == NotFound {
+		if err == ErrNotFound {
 			http.Error(w, err.Error(), 404)
 			return
 		}
-		if err == NotSnapshot || err == NotValid {
+		if err == ErrNotSnapshot || err == ErrNotValid {
 			http.Error(w, err.Error(), 400)
 			return
 		}
