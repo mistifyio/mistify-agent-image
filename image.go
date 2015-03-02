@@ -28,6 +28,7 @@ func isZfsInvalid(err error) bool {
 
 // XXX: should these be serialized through a channel like clones are?
 
+// DeleteImage deletes a disk image
 func (store *ImageStore) DeleteImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
 	image, err := store.getImage(request.Id)
 	if err != nil {
@@ -67,6 +68,7 @@ func (store *ImageStore) DeleteImage(r *http.Request, request *rpc.ImageRequest,
 	return nil
 }
 
+// CloneImage clones a disk image
 func (store *ImageStore) CloneImage(r *http.Request, request *rpc.ImageRequest, response *rpc.VolumeResponse) error {
 
 	if request.Dest == "" {
@@ -83,7 +85,7 @@ func (store *ImageStore) CloneImage(r *http.Request, request *rpc.ImageRequest, 
 		return err
 	}
 
-	clone, err := snap.Clone(request.Dest, default_zfs_options)
+	clone, err := snap.Clone(request.Dest, defaultZfsOptions)
 	if err != nil {
 		return err
 	}

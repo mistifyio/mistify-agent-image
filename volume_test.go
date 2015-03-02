@@ -86,7 +86,7 @@ func TestCreateVolume(t *testing.T) {
 func TestGetVolume(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		createVolume(t, store)
-		_, err := zfs.CreateFilesystem("test/test2", default_zfs_options)
+		_, err := zfs.CreateFilesystem("test/test2", defaultZfsOptions)
 		helpers.Ok(t, err)
 
 		response := &rpc.VolumeResponse{}
@@ -99,7 +99,7 @@ func TestGetVolume(t *testing.T) {
 		// Not a volume
 		request.Id = "test2"
 		err = store.GetVolume(&http.Request{}, request, response)
-		helpers.Equals(t, imagestore.NotVolume, err)
+		helpers.Equals(t, imagestore.ErrNotVolume, err)
 
 		request.Id = "test-volume"
 		err = store.GetVolume(&http.Request{}, request, response)
@@ -122,12 +122,12 @@ func TestDeleteDataset(t *testing.T) {
 		// Not found
 		request.Id = "foobar"
 		err = store.DeleteDataset(&http.Request{}, request, response)
-		helpers.Equals(t, imagestore.NotFound, err)
+		helpers.Equals(t, imagestore.ErrNotFound, err)
 
 		// Invalid
 		request.Id = "test-volume*"
 		err = store.DeleteDataset(&http.Request{}, request, response)
-		helpers.Equals(t, imagestore.NotValid, err)
+		helpers.Equals(t, imagestore.ErrNotValid, err)
 
 		request.Id = "test-volume"
 		err = store.DeleteDataset(&http.Request{}, request, response)

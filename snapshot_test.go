@@ -16,7 +16,7 @@ import (
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
-var default_zfs_options map[string]string = map[string]string{
+var defaultZfsOptions map[string]string = map[string]string{
 	"compression": "lz4",
 }
 
@@ -59,7 +59,7 @@ func notFoundIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, 
 		Id: "querty",
 	}
 	err := fn(&http.Request{}, request, response)
-	helpers.Equals(t, imagestore.NotFound, err)
+	helpers.Equals(t, imagestore.ErrNotFound, err)
 }
 
 func notValidIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error) {
@@ -68,7 +68,7 @@ func notValidIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, 
 		Id: "querty@",
 	}
 	err := fn(&http.Request{}, request, response)
-	helpers.Equals(t, imagestore.NotValid, err)
+	helpers.Equals(t, imagestore.ErrNotValid, err)
 }
 
 func notSnapshotIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error) {
@@ -77,7 +77,7 @@ func notSnapshotIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotReques
 		Id: parentName,
 	}
 	err := fn(&http.Request{}, request, response)
-	helpers.Equals(t, imagestore.NotSnapshot, err)
+	helpers.Equals(t, imagestore.ErrNotSnapshot, err)
 }
 
 func testIdParam(t *testing.T, fn func(*http.Request, *rpc.SnapshotRequest, *rpc.SnapshotResponse) error, requireSnapshot bool) {
@@ -122,9 +122,9 @@ func createSnapshot(t *testing.T, store *imagestore.ImageStore, recursive bool) 
 
 func withFilesystems(t *testing.T, fn func(store *imagestore.ImageStore, t *testing.T)) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
-		_, err := zfs.CreateFilesystem(getParentDatasetId(true), default_zfs_options)
+		_, err := zfs.CreateFilesystem(getParentDatasetId(true), defaultZfsOptions)
 		helpers.Ok(t, err)
-		_, err = zfs.CreateFilesystem(getChildDatasetId(true), default_zfs_options)
+		_, err = zfs.CreateFilesystem(getChildDatasetId(true), defaultZfsOptions)
 		helpers.Ok(t, err)
 		fn(store, t)
 	})

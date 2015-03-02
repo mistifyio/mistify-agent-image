@@ -1,4 +1,4 @@
-// Package app is the HTTP application
+// Package imagestore is the HTTP application
 package imagestore
 
 import (
@@ -8,6 +8,7 @@ import (
 
 // TODO: the core rpc should have some generic ping, logging, and stats handlers
 
+// RunHTTP creates and runs the http server
 func (store *ImageStore) RunHTTP(port uint) error {
 	s, _ := rpc.NewServer(port)
 	if err := s.RegisterService(store); err != nil {

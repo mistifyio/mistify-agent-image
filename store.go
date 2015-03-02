@@ -24,29 +24,39 @@ import (
 )
 
 const (
+	// EAGAIN is a shortcut to syscall.EAGAIN
 	EAGAIN = syscall.EAGAIN
+	// EEXIST is a shortcut to syscall.EEXIST
 	EEXIST = syscall.EEXIST
+	// ENOSPC is a shortcut to syscall.ENOSPC
 	ENOSPC = syscall.ENOSPC
+	// EINVAL is a shortcut to syscall.EINVAL
 	EINVAL = syscall.EINVAL
 
+	// DBTABLE is the tablename for images
 	DBTABLE = "mistify-agent-image"
 )
 
 var (
-	NotFound    = errors.New("not found")
-	NotVolume   = errors.New("not a volume")
-	NotSnapshot = errors.New("not a snapshot")
-	NotValid    = errors.New("not a valid dataset")
+	// ErrNotFound is an error when resource not being found
+	ErrNotFound = errors.New("not found")
+	// ErrNotVolume is an error when the resouce is expected to be a volume and isn't
+	ErrNotVolume = errors.New("not a volume")
+	// ErrNotSnapshot is an error when the resouce is expected to be a snapshot and isn't
+	ErrNotSnapshot = errors.New("not a snapshot")
+	// ErrNotValid is an error when the resouce is expected to be a dataset and isn't
+	ErrNotValid = errors.New("not a valid dataset")
 )
 
 type (
 
 	// horrible hack
-	Jobs struct {
+	jobs struct {
 		sync.RWMutex
 		Requests map[string]*fetchRequest
 	}
 
+	// ImageStore manages disk images
 	ImageStore struct {
 		// Config passed in
 		config Config
@@ -67,9 +77,10 @@ type (
 		currentFetchRequests map[string]*fetchRequest
 		DB                   *kvite.DB
 		tempDir              string
-		Jobs                 *Jobs
+		Jobs                 *jobs
 	}
 
+	// Config contains configuration for the ImageStore
 	Config struct {
 		ImageServer string // if we get a relative url, we prepend this
 		NumFetchers uint   // workers to use for fetching images
@@ -78,29 +89,29 @@ type (
 	}
 )
 
-func createJobs() *Jobs {
-	return &Jobs{Requests: make(map[string]*fetchRequest)}
+func createJobs() *jobs {
+	return &jobs{Requests: make(map[string]*fetchRequest)}
 }
 
-func (j *Jobs) Set(key string, val *fetchRequest) {
+func (j *jobs) set(key string, val *fetchRequest) {
 	j.Lock()
 	defer j.Unlock()
 	j.Requests[key] = val
 }
 
-func (j *Jobs) Get(key string) *fetchRequest {
+func (j *jobs) get(key string) *fetchRequest {
 	j.RLock()
 	defer j.RUnlock()
 	return j.Requests[key]
 }
 
-func (j *Jobs) Delete(key string) {
+func (j *jobs) delete(key string) {
 	j.Lock()
 	defer j.Unlock()
 	delete(j.Requests, key)
 }
 
-//create an image store with the given config
+// Create creates an image store with the given config
 func Create(config Config) (*ImageStore, error) {
 	if config.NumFetchers == 0 {
 		config.NumFetchers = uint(runtime.NumCPU())
@@ -172,7 +183,7 @@ func Create(config Config) (*ImageStore, error) {
 	return store, nil
 }
 
-// destroy a store
+// Destroy destroys a store
 func (store *ImageStore) Destroy() error {
 	var q struct{}
 	store.timeToDie <- q
@@ -186,7 +197,7 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 	fmt.Printf("handleFetchResponse: %+v\n", response)
 	// should we record some type of status/error?
 
-	store.Jobs.Delete(request.name)
+	store.Jobs.delete(request.name)
 
 	if response.err != nil {
 		log.WithFields(log.Fields{
@@ -233,7 +244,7 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 	// is someone else fetching this?
 
-	if store.Jobs.Get(req.name) != nil {
+	if store.Jobs.get(req.name) != nil {
 		// return right away
 		req.response <- &fetchResponse{}
 		return
@@ -246,19 +257,19 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 			return err
 		}
 		if b == nil {
-			return NotFound
+			return ErrNotFound
 		}
 		v, err := b.Get(req.name)
 		if err != nil {
 			return err
 		}
 		if v == nil {
-			return NotFound
+			return ErrNotFound
 		}
 		return nil
 	})
 	switch err {
-	case NotFound:
+	case ErrNotFound:
 		// okay, we need to fetch
 	case nil:
 		// it already exists
@@ -277,7 +288,7 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 
 	fmt.Printf("handleFetchRequest: %+v\n", req)
 
-	store.Jobs.Set(req.name, request)
+	store.Jobs.set(req.name, request)
 
 	// set as pending
 	image := rpc.Image{
@@ -322,8 +333,9 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 
 }
 
+// Run starts processing for jobs
 func (store *ImageStore) Run() {
-	for i, _ := range store.fetchWorkers {
+	for i := range store.fetchWorkers {
 		store.fetchWorkers[i].Run()
 	}
 	store.cloneWorker.Run()
@@ -343,6 +355,7 @@ func (store *ImageStore) Run() {
 	}
 }
 
+// RequestClone clones a dataset
 func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 
 	fmt.Println("RequestClone: ", dest)
@@ -355,14 +368,14 @@ func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 			return err
 		}
 		if b == nil {
-			return NotFound
+			return ErrNotFound
 		}
 		v, err := b.Get(name)
 		if err != nil {
 			return err
 		}
 		if v == nil {
-			return NotFound
+			return ErrNotFound
 		}
 		return json.Unmarshal(v, &i)
 	})
@@ -375,7 +388,7 @@ func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 	return store.cloneWorker.Clone(i.Snapshot, dest)
 }
 
-// asynchronously request an image
+// RequestImage asynchronously requests an image
 func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
 	if request.Source == "" {
 		return errors.New("need source")
@@ -392,14 +405,14 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 			return err
 		}
 		if b == nil {
-			return NotFound
+			return ErrNotFound
 		}
 		v, err := b.Get(name)
 		if err != nil {
 			return err
 		}
 		if v == nil {
-			return NotFound
+			return ErrNotFound
 		}
 		return json.Unmarshal(v, &i)
 	})
@@ -408,7 +421,7 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 	case nil:
 		// already exsists
 		return EEXIST
-	case NotFound:
+	case ErrNotFound:
 		// need to fetch it
 	default:
 		return err
@@ -446,8 +459,9 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 // TODO: have a background thread to update from datasets?  no images should come through
 // unless they are in the database
 
+// ListImages lists the disk images
 func (store *ImageStore) ListImages(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	images := make([]*rpc.Image, 0)
+	var images []*rpc.Image
 
 	err := store.DB.Transaction(func(tx *kvite.Tx) error {
 		if b, err := tx.Bucket("images"); b != nil {
@@ -501,16 +515,17 @@ func (store *ImageStore) getImage(id string) (*rpc.Image, error) {
 		return nil, err
 	}
 	if image.Id == "" {
-		return nil, NotFound
+		return nil, ErrNotFound
 	}
 	return &image, nil
 }
 
+// GetImage gets a disk image
 func (store *ImageStore) GetImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	images := make([]*rpc.Image, 0)
+	var images []*rpc.Image
 	image, err := store.getImage(request.Id)
 	if err != nil {
-		if err != NotFound {
+		if err != ErrNotFound {
 			return err
 		}
 	} else {
@@ -524,7 +539,8 @@ func (store *ImageStore) GetImage(r *http.Request, request *rpc.ImageRequest, re
 	return nil
 }
 
-// we are not "over-committing" on disk
+// SpaceAvailible returns the available disk space
+// ensure we are not "over-committing" on disk
 func (store *ImageStore) SpaceAvailible() (uint64, error) {
 	var total uint64
 	ds, err := zfs.GetDataset(store.config.Zpool)
@@ -568,7 +584,8 @@ func (store *ImageStore) SpaceAvailible() (uint64, error) {
 	return total / 1024, nil
 }
 
-//used for pre-flight check for vm creation
+// VerifyDisks verifys a guests's disk configuration before vm creation
+// used for pre-flight check for vm creation
 // we should also check to see if we have enough disk space for it. perhaps in a seperate call?
 func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
 	if request.Guest == nil || request.Guest.Id == "" || len(request.Guest.Disks) == 0 {
@@ -581,7 +598,7 @@ func (store *ImageStore) VerifyDisks(r *http.Request, request *rpc.GuestRequest,
 
 	var total uint64
 
-	for i, _ := range request.Guest.Disks {
+	for i := range request.Guest.Disks {
 		disk := &request.Guest.Disks[i]
 		if disk.Image == "" && disk.Size == 0 {
 			return EINVAL
@@ -615,7 +632,7 @@ func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestReq
 	// VerifyDisks filled in response
 	guest := response.Guest
 
-	for i, _ := range guest.Disks {
+	for i := range guest.Disks {
 		disk := &guest.Disks[i]
 
 		disk.Volume = fmt.Sprintf("%s/guests/%s/disk-%d", store.config.Zpool, guest.Id, i)
@@ -640,13 +657,13 @@ func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestReq
 			if err != nil {
 				return err
 			}
-			ds, err := s.Clone(disk.Volume, default_zfs_options)
+			ds, err := s.Clone(disk.Volume, defaultZfsOptions)
 			if err != nil {
 				return err
 			}
 			disk.Source = deviceForDataset(ds)
 		} else {
-			ds, err := zfs.CreateVolume(disk.Volume, disk.Size*1024*1024, default_zfs_options)
+			ds, err := zfs.CreateVolume(disk.Volume, disk.Size*1024*1024, defaultZfsOptions)
 			if err != nil {
 				return err
 			}
@@ -674,9 +691,8 @@ func (store *ImageStore) DeleteGuestsDisks(r *http.Request, request *rpc.GuestRe
 		if strings.Contains(err.Error(), "not found") {
 			// not there
 			return nil
-		} else {
-			return err
 		}
+		return err
 	}
 
 	// we assume guest disk were created by this service, or at least in the same structure
