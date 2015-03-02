@@ -86,7 +86,7 @@ func TestCreateVolume(t *testing.T) {
 func TestGetVolume(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		createVolume(t, store)
-		_, err := zfs.CreateFilesystem("test/test2", defaultZfsOptions)
+		_, err := zfs.CreateFilesystem("test/test2", defaultZFSOptions)
 		helpers.Ok(t, err)
 
 		response := &rpc.VolumeResponse{}

@@ -657,13 +657,13 @@ func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestReq
 			if err != nil {
 				return err
 			}
-			ds, err := s.Clone(disk.Volume, defaultZfsOptions)
+			ds, err := s.Clone(disk.Volume, defaultZFSOptions)
 			if err != nil {
 				return err
 			}
 			disk.Source = deviceForDataset(ds)
 		} else {
-			ds, err := zfs.CreateVolume(disk.Volume, disk.Size*1024*1024, defaultZfsOptions)
+			ds, err := zfs.CreateVolume(disk.Volume, disk.Size*1024*1024, defaultZFSOptions)
 			if err != nil {
 				return err
 			}

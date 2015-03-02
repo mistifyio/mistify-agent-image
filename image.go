@@ -85,7 +85,7 @@ func (store *ImageStore) CloneImage(r *http.Request, request *rpc.ImageRequest, 
 		return err
 	}
 
-	clone, err := snap.Clone(request.Dest, defaultZfsOptions)
+	clone, err := snap.Clone(request.Dest, defaultZFSOptions)
 	if err != nil {
 		return err
 	}

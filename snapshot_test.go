@@ -16,7 +16,7 @@ import (
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
-var defaultZfsOptions map[string]string = map[string]string{
+var defaultZFSOptions map[string]string = map[string]string{
 	"compression": "lz4",
 }
 
@@ -122,9 +122,9 @@ func createSnapshot(t *testing.T, store *imagestore.ImageStore, recursive bool) 
 
 func withFilesystems(t *testing.T, fn func(store *imagestore.ImageStore, t *testing.T)) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
-		_, err := zfs.CreateFilesystem(getParentDatasetId(true), defaultZfsOptions)
+		_, err := zfs.CreateFilesystem(getParentDatasetId(true), defaultZFSOptions)
 		helpers.Ok(t, err)
-		_, err = zfs.CreateFilesystem(getChildDatasetId(true), defaultZfsOptions)
+		_, err = zfs.CreateFilesystem(getChildDatasetId(true), defaultZFSOptions)
 		helpers.Ok(t, err)
 		fn(store, t)
 	})

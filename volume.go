@@ -50,7 +50,7 @@ func (store *ImageStore) CreateVolume(r *http.Request, request *rpc.VolumeReques
 	}
 
 	fullID := filepath.Join(store.config.Zpool, request.Id)
-	ds, err := zfs.CreateVolume(fullID, request.Size*1024*1024, defaultZfsOptions)
+	ds, err := zfs.CreateVolume(fullID, request.Size*1024*1024, defaultZFSOptions)
 	if err != nil {
 		return err
 	}
