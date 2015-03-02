@@ -213,7 +213,7 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 		return
 	}
 	// what if we get an error??
-	store.DB.Transaction(func(tx *kvite.Tx) error {
+	err = store.DB.Transaction(func(tx *kvite.Tx) error {
 		b, err := tx.CreateBucketIfNotExists("images")
 		if err != nil {
 			// destroy dataset??
@@ -225,6 +225,9 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 		}
 		return b.Put(request.name, val)
 	})
+	if err != nil {
+		log.WithField("error", err).Fatal(err)
+	}
 }
 
 func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
@@ -291,7 +294,7 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 		}).Fatal(err)
 	} else {
 		// what if we get an error??
-		store.DB.Transaction(func(tx *kvite.Tx) error {
+		err := store.DB.Transaction(func(tx *kvite.Tx) error {
 			b, err := tx.CreateBucketIfNotExists("images")
 			if err != nil {
 				// destroy dataset??
@@ -303,6 +306,11 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 			}
 			return b.Put(request.name, val)
 		})
+		if err != nil {
+			log.WithField("error", err).Error(err)
+			req.response <- &fetchResponse{err: err}
+			return
+		}
 	}
 	fmt.Printf("handleFetchRequest: let the user know\n")
 
@@ -446,7 +454,7 @@ func (store *ImageStore) ListImages(r *http.Request, request *rpc.ImageRequest, 
 			if err != nil {
 				return err
 			}
-			b.ForEach(func(k string, v []byte) error {
+			err = b.ForEach(func(k string, v []byte) error {
 				var i rpc.Image
 				if err := json.Unmarshal(v, &i); err != nil {
 					return err
@@ -454,6 +462,10 @@ func (store *ImageStore) ListImages(r *http.Request, request *rpc.ImageRequest, 
 				images = append(images, &i)
 				return nil
 			})
+			if err != nil {
+				log.WithField("error", err).Error("failed to unmarshal image json")
+				return err
+			}
 		}
 		return nil
 	})

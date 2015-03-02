@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	log "github.com/Sirupsen/logrus"
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
@@ -61,7 +62,14 @@ func (f *fetchWorker) Fetch(req *fetchRequest) (*fetchResponse, error) {
 			return nil, err
 		}
 		defer temp.Close()
-		defer os.Remove(temp.Name())
+		defer func() {
+			if err := os.Remove(temp.Name()); err != nil {
+				log.WithFields(log.Fields{
+					"error":    err,
+					"filename": temp.Name(),
+				}).Error("could not remove temp file")
+			}
+		}()
 
 		resp, err := http.Get(req.source)
 		if err != nil {
@@ -102,7 +110,12 @@ func (f *fetchWorker) Fetch(req *fetchRequest) (*fetchResponse, error) {
 	}
 
 	//we can remove the file now?
-	os.Remove(cache)
+	if err := os.Remove(cache); err != nil {
+		log.WithFields(log.Fields{
+			"error":    err,
+			"filename": cache,
+		}).Error("could not remove cache file")
+	}
 
 	snapshots, err := dataset.Snapshots()
 
