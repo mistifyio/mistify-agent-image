@@ -5,6 +5,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/mistifyio/mistify-agent-image"
+	logx "github.com/mistifyio/mistify-logrus-ext"
 	flag "github.com/spf13/pflag"
 )
 
@@ -17,15 +18,13 @@ func main() {
 	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
 	flag.Parse()
 
-	log.SetFormatter(&log.JSONFormatter{})
-	level, err := log.ParseLevel(logLevel)
+	err := logx.DefaultSetup(logLevel)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
 			"func":  "log.ParseLevel",
-		}).Fatal(err)
+		}).Fatal("failed to set log level")
 	}
-	log.SetLevel(level)
 
 	store, err := imagestore.Create(imagestore.Config{
 		Zpool: zpool,
