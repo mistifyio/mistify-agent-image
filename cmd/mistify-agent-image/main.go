@@ -22,8 +22,8 @@ func main() {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
-			"func":  "log.ParseLevel",
-		}).Fatal("failed to set log level")
+			"func":  "logx.DefaultSetup",
+		}).Fatal("failed to set up logrus")
 	}
 
 	store, err := imagestore.Create(imagestore.Config{
