@@ -2,9 +2,12 @@
 
 [![mistify-agent-image](https://godoc.org/github.com/mistifyio/mistify-agent-image/cmd/mistify-agent-image?status.png)](https://godoc.org/github.com/mistifyio/mistify-agent-image/cmd/mistify-agent-image)
 
-mistify-agent-image runs the subagent and HTTP API
+mistify-agent-image runs the subagent and HTTP API.
+
 
 ### Usage
+
+The following arguments are understood:
 
     Usage of ./mistify-agent-image:
     -l, --log-level="warning": log level: debug/info/warning/error/critical/fatal
