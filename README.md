@@ -2,7 +2,7 @@
 
 [![imagestore](https://godoc.org/github.com/mistifyio/mistify-agent-image?status.png)](https://godoc.org/github.com/mistifyio/mistify-agent-image)
 
-Package imagestore is a mistify subagent that manages guest disks and zfs,
+Package imagestore is a mistify subagent that manages guest disks and zfs pools,
 exposed via JSON-RPC over HTTP.
 
 ### HTTP API Endpoints
