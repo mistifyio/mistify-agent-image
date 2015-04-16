@@ -1,4 +1,3 @@
-// Package imagestore is the HTTP application
 package imagestore
 
 import (
