@@ -420,7 +420,6 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 	switch err {
 	case nil:
 		// already exsists
-		return EEXIST
 	case ErrNotFound:
 		// need to fetch it
 	default:
