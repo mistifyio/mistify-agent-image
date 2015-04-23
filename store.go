@@ -194,7 +194,7 @@ func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
 	store.fetcherChan <- request
 	response := <-request.response
 
-	fmt.Printf("handleFetchResponse: %+v\n", response)
+	log.WithField("handleFetchResponse", response).Debug()
 	// should we record some type of status/error?
 
 	store.Jobs.delete(request.name)
@@ -286,7 +286,7 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 
 	request.response = make(chan *fetchResponse)
 
-	fmt.Printf("handleFetchRequest: %+v\n", req)
+	log.WithField("handleFetchRequest", req).Debug()
 
 	store.Jobs.set(req.name, request)
 
@@ -323,7 +323,6 @@ func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
 			return
 		}
 	}
-	fmt.Printf("handleFetchRequest: let the user know\n")
 
 	// it's been queued
 	req.response <- &fetchResponse{}
@@ -358,7 +357,7 @@ func (store *ImageStore) Run() {
 // RequestClone clones a dataset
 func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 
-	fmt.Println("RequestClone: ", dest)
+	log.WithField("RequestClone", dest).Info()
 
 	i := &rpc.Image{}
 
@@ -381,7 +380,6 @@ func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 	})
 
 	if err != nil {
-		fmt.Println("RequestClone err", err)
 		return nil, err
 	}
 
@@ -420,7 +418,6 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 	switch err {
 	case nil:
 		// already exsists
-		return EEXIST
 	case ErrNotFound:
 		// need to fetch it
 	default:
@@ -435,12 +432,11 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 		response: make(chan *fetchResponse, 1),
 	}
 
-	fmt.Printf("RequestImage: %+v\n", req)
+	log.WithField("RequestImage", req).Info()
 
 	store.usersFetcherChan <- req
 
-	fmt.Printf("RequestImage: waiting on response\n")
-
+	log.Debug("RequestImage: waiting on response")
 	resp := <-req.response
 
 	if resp.err != nil {
