@@ -2,18 +2,22 @@ package imagestore
 
 import (
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
-	"gopkg.in/mistifyio/go-zfs.v1"
+	"github.com/mistifyio/go-zfs"
+	"github.com/mistifyio/mistify-agent/rpc"
 )
 
 type (
+	// fetchRequest contains information needed to fetch and store an image
 	fetchRequest struct {
 		name     string
 		source   string
@@ -22,126 +26,263 @@ type (
 		response chan *fetchResponse
 	}
 
+	// fetchResponse contains the results of fetching an image
 	fetchResponse struct {
 		err      error
 		dataset  *zfs.Dataset
 		snapshot *zfs.Dataset
 	}
 
-	fetchWorker struct {
-		timeToDie chan struct{}
-		requests  chan *fetchRequest
-		store     *ImageStore
+	// fetcher fetches images. It shares a response with fetch requests for the
+	// same image and handles the maximum concurrent unique image fetch requests
+	fetcher struct {
+		store           *ImageStore
+		lock            sync.Mutex
+		concurrentChan  chan struct{}
+		quitChan        chan struct{}
+		pendingRequests chan *fetchRequest
+		currentRequests map[string][]*fetchRequest
 	}
 )
 
-func newFetchWorker(store *ImageStore, requests chan *fetchRequest) *fetchWorker {
-	return &fetchWorker{
-		timeToDie: make(chan struct{}),
-		store:     store,
-		requests:  requests,
+// newFetcher creates a new fetcher
+func newFetcher(store *ImageStore, maxPending, concurrency uint) *fetcher {
+	if concurrency <= 0 {
+		concurrency = 5
 	}
+
+	f := &fetcher{
+		store:           store,
+		concurrentChan:  make(chan struct{}, concurrency),
+		quitChan:        make(chan struct{}),
+		pendingRequests: make(chan *fetchRequest, maxPending),
+		currentRequests: make(map[string][]*fetchRequest),
+	}
+
+	// Fill concurrencyChan
+	for i := uint(0); i < concurrency; i++ {
+		f.concurrentChan <- struct{}{}
+	}
+
+	return f
 }
 
-func (f *fetchWorker) Exit() {
-	var q struct{}
-	f.timeToDie <- q
-}
-
-func (f *fetchWorker) Fetch(req *fetchRequest) (*fetchResponse, error) {
-	cache := filepath.Join(req.tempdir, req.name)
-
-	_, err := os.Stat(cache)
+// download fetches an external image to the local machine
+func (f *fetcher) download(req *fetchRequest, dest string) error {
+	temp, err := ioutil.TempFile(req.tempdir, fmt.Sprintf(".image.%s.gz", req.name))
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-
-		temp, err := ioutil.TempFile(req.tempdir, fmt.Sprintf(".image.%s.gz", req.name))
-		if err != nil {
-			return nil, err
-		}
-		defer temp.Close()
-		defer func() {
+		return err
+	}
+	// In case of a failure, remove the temp file
+	successfulDownload := false
+	defer func() {
+		if !successfulDownload {
 			if err := os.Remove(temp.Name()); err != nil {
 				log.WithFields(log.Fields{
 					"error":    err,
 					"filename": temp.Name(),
 				}).Error("could not remove temp file")
 			}
-		}()
-
-		resp, err := http.Get(req.source)
-		if err != nil {
-			return nil, err
 		}
+	}()
+	defer temp.Close()
 
-		if resp.StatusCode != 200 {
-			return nil, fmt.Errorf("got %d", resp.StatusCode)
-		}
-
-		defer resp.Body.Close()
-
-		_, err = io.Copy(temp, resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		if err := temp.Close(); err != nil {
-			return nil, err
-		}
-
-		if err := os.Rename(temp.Name(), cache); err != nil {
-			return nil, err
-		}
-	}
-
-	// TODO: checksum, etc
-	fi, err := os.Open(cache)
+	resp, err := http.Get(req.source)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer fi.Close()
+	defer resp.Body.Close()
 
-	z, err := gzip.NewReader(fi)
+	if resp.StatusCode != http.StatusOK {
+		return err
+	}
 
-	dataset, err := zfs.ReceiveSnapshot(z, req.dest)
+	if _, err = io.Copy(temp, resp.Body); err != nil {
+		return err
+	}
+
+	if err := temp.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(temp.Name(), dest); err != nil {
+		return err
+	}
+	successfulDownload = true
+	return nil
+}
+
+// importImage takes a compressed image snapshot and imports it to zfs
+func (f *fetcher) importImage(req *fetchRequest) *fetchResponse {
+	fetchResp := &fetchResponse{}
+
+	filename := filepath.Join(req.tempdir, req.name)
+
+	// Open and unzip the image
+	cachedFile, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		fetchResp.err = err
+		return fetchResp
+	}
+	defer cachedFile.Close()
+
+	unzipped, err := gzip.NewReader(cachedFile)
+	if err != nil {
+		fetchResp.err = err
+		return fetchResp
 	}
 
-	//we can remove the file now?
-	if err := os.Remove(cache); err != nil {
+	// Import the image
+	dataset, err := zfs.ReceiveSnapshot(unzipped, req.dest)
+	if err != nil {
+		fetchResp.err = err
+		return fetchResp
+	}
+
+	// Remove the cached file
+	if err := os.Remove(filename); err != nil {
 		log.WithFields(log.Fields{
 			"error":    err,
-			"filename": cache,
+			"filename": filename,
 		}).Error("could not remove cache file")
 	}
 
+	// Build the response
+	fetchResp.dataset = dataset
 	snapshots, err := dataset.Snapshots()
-
 	if err != nil {
-		return nil, err
+		fetchResp.err = err
+		return fetchResp
 	}
+	fetchResp.snapshot = snapshots[0]
 
-	return &fetchResponse{
-		dataset:  dataset,
-		snapshot: snapshots[0],
-	}, nil
+	return fetchResp
 }
 
-func (f *fetchWorker) Run() {
+// fetchImage downloads and imports an image
+func (f *fetcher) fetchImage(req *fetchRequest) {
+	log.WithField("req", req).Debug("waiting on concurrent slot")
+	// Wait until there's an open request slot to limit concurrent fetches
+	select {
+	case q := <-f.quitChan:
+		f.quitChan <- q
+		return
+	case <-f.concurrentChan:
+	}
+	defer func() { f.concurrentChan <- struct{}{} }()
+	log.WithField("req", req).Debug("beginning fetch")
+
+	// Check for a cached image
+	cachedFilename := filepath.Join(req.tempdir, req.name)
+	_, err := os.Stat(cachedFilename)
+
+	// Download the image if a cached file wasn't found
+	if err != nil {
+		fetchResp := &fetchResponse{}
+
+		if !os.IsNotExist(err) {
+			fetchResp.err = err
+			f.shareResponse(req.name, fetchResp)
+			return
+		}
+
+		log.WithField("req", req).Debug("download image")
+		if err := f.download(req, cachedFilename); err != nil {
+			fetchResp.err = err
+			f.shareResponse(req.name, fetchResp)
+			return
+		}
+	}
+
+	// Import the file into zfs
+	log.WithField("req", req).Debug("import image")
+	fetchResp := f.importImage(req)
+
+	// Save the image information
+	if fetchResp.err == nil {
+		image := &rpc.Image{
+			Id:       req.name,
+			Volume:   fetchResp.dataset.Name,
+			Snapshot: fetchResp.snapshot.Name,
+			Size:     fetchResp.snapshot.Volsize / 1024 / 1024,
+			Status:   "complete",
+		}
+
+		if err := f.store.saveImage(image); err != nil {
+			fetchResp.err = err
+		}
+	}
+
+	log.WithField("req", req).Debug("return response")
+	f.shareResponse(req.name, fetchResp)
+}
+
+// shareResponse shares a response with all similar waiting requests and then
+// cleans up
+func (f *fetcher) shareResponse(name string, resp *fetchResponse) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	// Give all related requests the response
+	for _, req := range f.currentRequests[name] {
+		req.response <- resp
+	}
+
+	delete(f.currentRequests, name)
+}
+
+// process decides whether a request can share the response of an in-progress
+// request for the same image or kicks off a new fetch
+func (f *fetcher) process(req *fetchRequest) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	requests, ok := f.currentRequests[req.name]
+	if ok {
+		// A request for this already under way. Wait with the rest for a
+		// response
+		log.WithField("req", req).Debug("appended to existing request")
+		f.currentRequests[req.name] = append(requests, req)
+		return
+	}
+	// Completely new request
+	log.WithField("req", req).Debug("new request")
+	f.currentRequests[req.name] = []*fetchRequest{req}
+	go f.fetchImage(req)
+}
+
+// fetch adds a new request to the fetcher
+func (f *fetcher) fetch(req *fetchRequest) {
+	log.WithField("req", req).Debug("added to pending request chan")
+	f.pendingRequests <- req
+}
+
+// run starts the processing of fetch requests
+func (f *fetcher) run() {
 	go func() {
 		for {
 			select {
-			case <-f.timeToDie:
-				return
-			case req := <-f.requests:
-				resp, err := f.Fetch(req)
-				if err != nil {
-					resp = &fetchResponse{err: err}
+			case q := <-f.quitChan:
+				// Stick it back in so anything else looking at the quitChan can
+				// stop
+				f.quitChan <- q
+				// Stop taking new requests
+				close(f.pendingRequests)
+				// Close out pending requests
+				for req := range f.pendingRequests {
+					req.response <- &fetchResponse{err: errors.New("fetcher quit")}
 				}
-				req.response <- resp
+				return
+			case req := <-f.pendingRequests:
+				log.WithField("req", req).Debug("pending request received")
+				// Process the request
+				f.process(req)
 			}
 		}
 	}()
+}
+
+// stop halts processing
+func (f *fetcher) exit() {
+	f.quitChan <- struct{}{}
 }
