@@ -37,10 +37,11 @@ type (
 	// same image and handles the maximum concurrent unique image fetch requests
 	fetcher struct {
 		store           *ImageStore
-		lock            sync.Mutex
 		concurrentChan  chan struct{}
 		quitChan        chan struct{}
 		pendingRequests chan *fetchRequest
+
+		lock            sync.Mutex
 		currentRequests map[string][]*fetchRequest
 	}
 )
