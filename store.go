@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 
 	log "github.com/Sirupsen/logrus"
@@ -49,13 +48,6 @@ var (
 )
 
 type (
-
-	// horrible hack
-	jobs struct {
-		sync.RWMutex
-		Requests map[string]*fetchRequest
-	}
-
 	// ImageStore manages disk images
 	ImageStore struct {
 		// Config passed in
@@ -64,20 +56,13 @@ type (
 		cloneWorker *cloneWorker
 		// clone requests
 		usersCloneChan chan *cloneRequest
-		// fetch workers
-		fetchWorkers []*fetchWorker
-		// fetch requests
-		fetcherChan chan *fetchRequest
-		// fetch requests from "users"
-		usersFetcherChan chan *fetchRequest
+		fetcher        *fetcher
 		// exit signal
 		timeToDie chan struct{}
 		// root of the image store
-		dataset              string
-		currentFetchRequests map[string]*fetchRequest
-		DB                   *kvite.DB
-		tempDir              string
-		Jobs                 *jobs
+		dataset string
+		DB      *kvite.DB
+		tempDir string
 	}
 
 	// Config contains configuration for the ImageStore
@@ -89,28 +74,6 @@ type (
 	}
 )
 
-func createJobs() *jobs {
-	return &jobs{Requests: make(map[string]*fetchRequest)}
-}
-
-func (j *jobs) set(key string, val *fetchRequest) {
-	j.Lock()
-	defer j.Unlock()
-	j.Requests[key] = val
-}
-
-func (j *jobs) get(key string) *fetchRequest {
-	j.RLock()
-	defer j.RUnlock()
-	return j.Requests[key]
-}
-
-func (j *jobs) delete(key string) {
-	j.Lock()
-	defer j.Unlock()
-	delete(j.Requests, key)
-}
-
 // Create creates an image store with the given config
 func Create(config Config) (*ImageStore, error) {
 	if config.NumFetchers == 0 {
@@ -118,14 +81,11 @@ func Create(config Config) (*ImageStore, error) {
 	}
 
 	store := &ImageStore{
-		config:           config,
-		usersCloneChan:   make(chan *cloneRequest),
-		fetcherChan:      make(chan *fetchRequest, config.MaxPending),
-		usersFetcherChan: make(chan *fetchRequest),
-		timeToDie:        make(chan struct{}),
-		tempDir:          filepath.Join("/", config.Zpool, "images", "temp"),
-		dataset:          filepath.Join(config.Zpool, "images"),
-		Jobs:             createJobs(),
+		config:         config,
+		usersCloneChan: make(chan *cloneRequest),
+		timeToDie:      make(chan struct{}),
+		tempDir:        filepath.Join("/", config.Zpool, "images", "temp"),
+		dataset:        filepath.Join(config.Zpool, "images"),
 	}
 
 	_, err := zfs.GetDataset(store.dataset)
@@ -173,12 +133,8 @@ func Create(config Config) (*ImageStore, error) {
 	// start our clone worker
 	store.cloneWorker = newCloneWorker(store)
 
-	// start our fetchers
-	store.fetchWorkers = make([]*fetchWorker, config.NumFetchers)
-	for i := uint(0); i < config.NumFetchers; i++ {
-		f := newFetchWorker(store, store.fetcherChan)
-		store.fetchWorkers[i] = f
-	}
+	// start the fetcher
+	store.fetcher = newFetcher(store, config.MaxPending, config.NumFetchers)
 
 	return store, nil
 }
@@ -190,168 +146,14 @@ func (store *ImageStore) Destroy() error {
 	return nil
 }
 
-func (store *ImageStore) handleFetchResponse(request *fetchRequest) {
-	store.fetcherChan <- request
-	response := <-request.response
-
-	log.WithField("handleFetchResponse", response).Debug()
-	// should we record some type of status/error?
-
-	store.Jobs.delete(request.name)
-
-	if response.err != nil {
-		log.WithFields(log.Fields{
-			"error": response.err,
-			"func":  "imagestore.ImageStore.handleFetchResponse",
-		}).Fatal(response.err)
-		return
-	}
-	image := rpc.Image{
-		Id:       request.name,
-		Volume:   response.dataset.Name,
-		Snapshot: response.snapshot.Name,
-		Size:     response.snapshot.Volsize / 1024 / 1024,
-		Status:   "complete",
-	}
-
-	val, err := json.Marshal(image)
-	if err != nil {
-		// destroy dataset?? set an error??
-		log.WithFields(log.Fields{
-			"error": err,
-			"func":  "json.Marshal",
-		}).Fatal(err)
-		return
-	}
-	// what if we get an error??
-	err = store.DB.Transaction(func(tx *kvite.Tx) error {
-		b, err := tx.CreateBucketIfNotExists("images")
-		if err != nil {
-			// destroy dataset??
-			log.WithFields(log.Fields{
-				"error": err,
-				"func":  "kvite.Tx.CreateBucketIfNotExists",
-			}).Fatal(err)
-			return err
-		}
-		return b.Put(request.name, val)
-	})
-	if err != nil {
-		log.WithField("error", err).Fatal(err)
-	}
-}
-
-func (store *ImageStore) handleFetchRequest(req *fetchRequest) {
-	// is someone else fetching this?
-
-	if store.Jobs.get(req.name) != nil {
-		// return right away
-		req.response <- &fetchResponse{}
-		return
-	}
-
-	// Does it already exist?
-	err := store.DB.Transaction(func(tx *kvite.Tx) error {
-		b, err := tx.Bucket("images")
-		if err != nil {
-			return err
-		}
-		if b == nil {
-			return ErrNotFound
-		}
-		v, err := b.Get(req.name)
-		if err != nil {
-			return err
-		}
-		if v == nil {
-			return ErrNotFound
-		}
-		return nil
-	})
-	switch err {
-	case ErrNotFound:
-		// okay, we need to fetch
-	case nil:
-		// it already exists
-		req.response <- &fetchResponse{}
-		return
-	default:
-		// some other error
-		req.response <- &fetchResponse{err: err}
-		return
-	}
-
-	request := &fetchRequest{}
-	*request = *req
-
-	request.response = make(chan *fetchResponse)
-
-	log.WithField("handleFetchRequest", req).Debug()
-
-	store.Jobs.set(req.name, request)
-
-	// set as pending
-	image := rpc.Image{
-		Id:     request.name,
-		Status: "pending",
-	}
-
-	val, err := json.Marshal(image)
-	if err != nil {
-		// destroy dataset?? set an error??
-		log.WithFields(log.Fields{
-			"error": err,
-			"func":  "json.Marshal",
-		}).Fatal(err)
-	} else {
-		// what if we get an error??
-		err := store.DB.Transaction(func(tx *kvite.Tx) error {
-			b, err := tx.CreateBucketIfNotExists("images")
-			if err != nil {
-				// destroy dataset??
-				log.WithFields(log.Fields{
-					"error": err,
-					"func":  "kvite.Tx.CreateBucketIfNotExists",
-				}).Fatal(err)
-				return err
-			}
-			return b.Put(request.name, val)
-		})
-		if err != nil {
-			log.WithField("error", err).Error(err)
-			req.response <- &fetchResponse{err: err}
-			return
-		}
-	}
-
-	// it's been queued
-	req.response <- &fetchResponse{}
-
-	//wait in a goroutine
-	go store.handleFetchResponse(request)
-
-}
-
 // Run starts processing for jobs
 func (store *ImageStore) Run() {
-	for i := range store.fetchWorkers {
-		store.fetchWorkers[i].Run()
-	}
 	store.cloneWorker.Run()
-	for {
-		select {
-		case <-store.timeToDie:
-			for _, f := range store.fetchWorkers {
-				f.Exit()
-			}
-			store.cloneWorker.Exit()
-			store.DB.Close()
-			break
-
-		case req := <-store.usersFetcherChan:
-			store.handleFetchRequest(req)
-		}
-	}
+	store.fetcher.run()
+	<-store.timeToDie
+	store.cloneWorker.Exit()
+	store.fetcher.exit()
+	store.DB.Close()
 }
 
 // RequestClone clones a dataset
@@ -386,67 +188,47 @@ func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 	return store.cloneWorker.Clone(i.Snapshot, dest)
 }
 
-// RequestImage asynchronously requests an image
+// RequestImage fetches an image
 func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
 	if request.Source == "" {
 		return errors.New("need source")
 	}
 
+	// Determine the filename from the source
 	_, file := filepath.Split(request.Source)
 	name := strings.TrimSuffix(file, ".gz")
 
-	i := &rpc.Image{}
-
-	err := store.DB.Transaction(func(tx *kvite.Tx) error {
-		b, err := tx.Bucket("images")
-		if err != nil {
-			return err
-		}
-		if b == nil {
-			return ErrNotFound
-		}
-		v, err := b.Get(name)
-		if err != nil {
-			return err
-		}
-		if v == nil {
-			return ErrNotFound
-		}
-		return json.Unmarshal(v, &i)
-	})
-
-	switch err {
-	case nil:
-		// already exsists
-	case ErrNotFound:
-		// need to fetch it
-	default:
+	// Check whether it exists locally
+	image, err := store.getImage(name)
+	if err != nil && err != ErrNotFound {
 		return err
 	}
 
-	req := &fetchRequest{
-		name:     name,
-		source:   request.Source,
-		tempdir:  store.tempDir,
-		dest:     filepath.Join(store.dataset, name),
-		response: make(chan *fetchResponse, 1),
+	// If it isn't here or ready, go get it
+	if image == nil || image.Status != "complete" {
+		req := &fetchRequest{
+			name:    name,
+			source:  request.Source,
+			tempdir: store.tempDir,
+			dest:    filepath.Join(store.dataset, name),
+		}
+
+		resp := store.fetcher.fetch(req)
+		if resp.err != nil {
+			return err
+		}
+
+		// Get the image data
+		var err error
+		image, err = store.getImage(name)
+		if err != nil {
+			return err
+		}
 	}
 
-	log.WithField("RequestImage", req).Info()
-
-	store.usersFetcherChan <- req
-
-	log.Debug("RequestImage: waiting on response")
-	resp := <-req.response
-
-	if resp.err != nil {
-		return err
-	}
 	*response = rpc.ImageResponse{
 		Images: []*rpc.Image{
-			&rpc.Image{
-				Id: name,
-			},
+			image,
 		},
 	}
 	return nil
@@ -514,6 +296,29 @@ func (store *ImageStore) getImage(id string) (*rpc.Image, error) {
 		return nil, ErrNotFound
 	}
 	return &image, nil
+}
+
+func (store *ImageStore) saveImage(image *rpc.Image) error {
+	val, err := json.Marshal(image)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+			"func":  "json.Marshal",
+		}).Error("failed to marshal image")
+		return err
+	}
+
+	err = store.DB.Transaction(func(tx *kvite.Tx) error {
+		b, err := tx.CreateBucketIfNotExists("images")
+		if err != nil {
+			return err
+		}
+		return b.Put(image.Id, val)
+	})
+	if err != nil {
+		log.WithField("error", err).Error("failed to save image data")
+	}
+	return err
 }
 
 // GetImage gets a disk image

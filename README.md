@@ -109,8 +109,6 @@ Config contains configuration for the ImageStore
 ```go
 type ImageStore struct {
 	DB *kvite.DB
-
-	Jobs *jobs
 }
 ```
 
@@ -266,7 +264,7 @@ RequestClone clones a dataset
 ```go
 func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error
 ```
-RequestImage asynchronously requests an image
+RequestImage fetches an image
 
 #### func (*ImageStore) RollbackSnapshot
 
