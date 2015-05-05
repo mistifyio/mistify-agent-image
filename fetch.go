@@ -253,9 +253,11 @@ func (f *fetcher) process(req *fetchRequest) {
 }
 
 // fetch adds a new request to the fetcher
-func (f *fetcher) fetch(req *fetchRequest) {
+func (f *fetcher) fetch(req *fetchRequest) *fetchResponse {
+	req.response = make(chan *fetchResponse, 1)
 	log.WithField("req", req).Debug("added to pending request chan")
 	f.pendingRequests <- req
+	return <-req.response
 }
 
 // run starts the processing of fetch requests

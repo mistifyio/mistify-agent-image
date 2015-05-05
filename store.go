@@ -207,17 +207,13 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 	// If it isn't here or ready, go get it
 	if image == nil || image.Status != "complete" {
 		req := &fetchRequest{
-			name:     name,
-			source:   request.Source,
-			tempdir:  store.tempDir,
-			dest:     filepath.Join(store.dataset, name),
-			response: make(chan *fetchResponse, 1),
+			name:    name,
+			source:  request.Source,
+			tempdir: store.tempDir,
+			dest:    filepath.Join(store.dataset, name),
 		}
 
-		store.fetcher.fetch(req)
-
-		log.WithField("req", req).Debug("waiting on fetch response")
-		resp := <-req.response
+		resp := store.fetcher.fetch(req)
 		if resp.err != nil {
 			return err
 		}
