@@ -44,7 +44,20 @@ type (
 		lock            sync.Mutex
 		currentRequests map[string][]*fetchRequest
 	}
+
+	// ErrorHTTPCode should be used for errors resulting from an http response
+	// code not matching the expected code
+	ErrorHTTPCode struct {
+		Expected int
+		Code     int
+		Source   string
+	}
 )
+
+// Error returns a string error message
+func (e ErrorHTTPCode) Error() string {
+	return fmt.Sprintf("unexpected http response code: expected %d, received %d, url: %s", e.Expected, e.Code, e.Source)
+}
 
 // newFetcher creates a new fetcher
 func newFetcher(store *ImageStore, maxPending, concurrency uint) *fetcher {
@@ -95,7 +108,7 @@ func (f *fetcher) download(req *fetchRequest, dest string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return err
+		return ErrorHTTPCode{http.StatusOK, resp.StatusCode, req.source}
 	}
 
 	if _, err = io.Copy(temp, resp.Body); err != nil {

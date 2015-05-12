@@ -215,7 +215,7 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 
 		resp := store.fetcher.fetch(req)
 		if resp.err != nil {
-			return err
+			return resp.err
 		}
 
 		// Get the image data
