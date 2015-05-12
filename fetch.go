@@ -108,7 +108,11 @@ func (f *fetcher) download(req *fetchRequest, dest string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return ErrorHTTPCode{http.StatusOK, resp.StatusCode, req.source}
+		return ErrorHTTPCode{
+			Expected: http.StatusOK,
+			Code:     resp.StatusCode,
+			Source:   req.source,
+		}
 	}
 
 	if _, err = io.Copy(temp, resp.Body); err != nil {
