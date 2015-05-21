@@ -104,6 +104,26 @@ type Config struct {
 
 Config contains configuration for the ImageStore
 
+#### type ErrorHTTPCode
+
+```go
+type ErrorHTTPCode struct {
+	Expected int
+	Code     int
+	Source   string
+}
+```
+
+ErrorHTTPCode should be used for errors resulting from an http response code not
+matching the expected code
+
+#### func (ErrorHTTPCode) Error
+
+```go
+func (e ErrorHTTPCode) Error() string
+```
+Error returns a string error message
+
 #### type ImageStore
 
 ```go
