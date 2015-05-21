@@ -254,32 +254,32 @@ func (store *ImageStore) DownloadSnapshot(w http.ResponseWriter, r *http.Request
 	var request rpc.SnapshotRequest
 	err := decoder.Decode(&request)
 	if err != nil {
-		http.Error(w, err.Error(), 400)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if request.Id == "" {
-		http.Error(w, "need an id", 400)
+		http.Error(w, "need an id", http.StatusBadRequest)
 		return
 	}
 
 	s, err := store.getSnapshot(request.Id)
 	if err != nil {
 		if err == ErrNotFound {
-			http.Error(w, err.Error(), 404)
+			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		if err == ErrNotSnapshot || err == ErrNotValid {
-			http.Error(w, err.Error(), 400)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	err = s.SendSnapshot(w)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
