@@ -19,7 +19,7 @@ func main() {
 	flag.UintVarP(&port, "port", "p", 19999, "listen port")
 	flag.StringVarP(&zpool, "zpool", "z", "mistify", "zpool")
 	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
-	flag.StringVarP(&imageServer, "image-service", "i", "images.service.lochness.local:20000", "image service")
+	flag.StringVarP(&imageServer, "image-service", "i", "images.service.lochness.local", "image service. srv query used to find port if not specified")
 	flag.Parse()
 
 	if err := logx.DefaultSetup(logLevel); err != nil {
@@ -39,12 +39,7 @@ func main() {
 	if partsLength == 0 || partsLength > 2 {
 		log.WithField("imageServer", imageServer).Fatal("invalid image-service value")
 	}
-	// Default to localhost if only port is provided
-	if partsLength == 2 {
-		if imageServerParts[0] == "" {
-			imageServerParts[0] = "localhost"
-		}
-	}
+
 	// Try to lookup port if only host/service is provided
 	if partsLength == 1 || imageServerParts[1] == "" {
 		_, addrs, err := net.LookupSRV("", "", imageServer)
