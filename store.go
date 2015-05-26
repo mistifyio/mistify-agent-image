@@ -190,16 +190,12 @@ func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
 
 // RequestImage fetches an image
 func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	if request.Source == "" {
-		return errors.New("need source")
+	if request.Id == "" {
+		return errors.New("need id")
 	}
 
-	// Determine the filename from the source
-	_, file := filepath.Split(request.Source)
-	name := strings.TrimSuffix(file, ".gz")
-
 	// Check whether it exists locally
-	image, err := store.getImage(name)
+	image, err := store.getImage(request.Id)
 	if err != nil && err != ErrNotFound {
 		return err
 	}
@@ -207,10 +203,10 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 	// If it isn't here or ready, go get it
 	if image == nil || image.Status != "complete" {
 		req := &fetchRequest{
-			name:    name,
-			source:  request.Source,
+			name:    request.Id,
+			source:  fmt.Sprintf("http://%s/images/%s/download", store.config.ImageServer, request.Id),
 			tempdir: store.tempDir,
-			dest:    filepath.Join(store.dataset, name),
+			dest:    filepath.Join(store.dataset, request.Id),
 		}
 
 		resp := store.fetcher.fetch(req)
@@ -220,7 +216,7 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 
 		// Get the image data
 		var err error
-		image, err = store.getImage(name)
+		image, err = store.getImage(request.Id)
 		if err != nil {
 			return err
 		}

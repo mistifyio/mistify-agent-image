@@ -1,6 +1,7 @@
 package imagestore
 
 import (
+	"bufio"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -83,7 +84,7 @@ func newFetcher(store *ImageStore, maxPending, concurrency uint) *fetcher {
 
 // download fetches an external image to the local machine
 func (f *fetcher) download(req *fetchRequest, dest string) error {
-	temp, err := ioutil.TempFile(req.tempdir, fmt.Sprintf(".image.%s.gz", req.name))
+	temp, err := ioutil.TempFile(req.tempdir, req.name)
 	if err != nil {
 		return err
 	}
@@ -130,7 +131,7 @@ func (f *fetcher) download(req *fetchRequest, dest string) error {
 	return nil
 }
 
-// importImage takes a compressed image snapshot and imports it to zfs
+// importImage takes an image snapshot and imports it to zfs
 func (f *fetcher) importImage(req *fetchRequest) *fetchResponse {
 	fetchResp := &fetchResponse{}
 
@@ -144,14 +145,29 @@ func (f *fetcher) importImage(req *fetchRequest) *fetchResponse {
 	}
 	defer cachedFile.Close()
 
-	unzipped, err := gzip.NewReader(cachedFile)
+	// Use a response buffer so the first few bytes can be peeked at for file
+	// type detection. Uncompress the image if it is gzipped
+	fileBuffer := bufio.NewReader(cachedFile)
+	var cacheFileReader io.Reader = fileBuffer
+
+	filetypeBytes, err := fileBuffer.Peek(512)
 	if err != nil {
 		fetchResp.err = err
 		return fetchResp
 	}
 
+	if http.DetectContentType(filetypeBytes) == "application/x-gzip" {
+		gzipReader, err := gzip.NewReader(fileBuffer)
+		if err != nil {
+			fetchResp.err = err
+			return fetchResp
+		}
+		defer gzipReader.Close()
+		cacheFileReader = gzipReader
+	}
+
 	// Import the image
-	dataset, err := zfs.ReceiveSnapshot(unzipped, req.dest)
+	dataset, err := zfs.ReceiveSnapshot(cacheFileReader, req.dest)
 	if err != nil {
 		fetchResp.err = err
 		return fetchResp
