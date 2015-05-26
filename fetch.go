@@ -1,6 +1,7 @@
 package imagestore
 
 import (
+	"bufio"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -144,26 +145,25 @@ func (f *fetcher) importImage(req *fetchRequest) *fetchResponse {
 	}
 	defer cachedFile.Close()
 
-	// Detect if gzipped
-	filetypeBytes := make([]byte, 512)
-	if _, err := cachedFile.Read(filetypeBytes); err != nil {
+	// Use a response buffer so the first few bytes can be peeked at for file
+	// type detection. Uncompress the image if it is gzipped
+	fileBuffer := bufio.NewReader(cachedFile)
+	var cacheFileReader io.Reader = fileBuffer
+
+	filetypeBytes, err := fileBuffer.Peek(512)
+	if err != nil {
 		fetchResp.err = err
 		return fetchResp
 	}
-	filetype := http.DetectContentType(filetypeBytes)
-	// Reset reading to the file beginning
-	cachedFile.Seek(0, 0)
 
-	// Prepare file reader to uncompress data if necessary
-	var cacheFileReader io.Reader = cachedFile
-	if filetype == "application/x-gzip" {
-		unzipReader, err := gzip.NewReader(cachedFile)
+	if http.DetectContentType(filetypeBytes) == "application/x-gzip" {
+		gzipReader, err := gzip.NewReader(fileBuffer)
 		if err != nil {
 			fetchResp.err = err
 			return fetchResp
 		}
-		defer unzipReader.Close()
-		cacheFileReader = unzipReader
+		defer gzipReader.Close()
+		cacheFileReader = gzipReader
 	}
 
 	// Import the image
