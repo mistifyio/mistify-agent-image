@@ -292,8 +292,8 @@ func testDownload(t *testing.T, store *imagestore.ImageStore, snapshotName strin
 func TestDownloadSnapshot(t *testing.T) {
 	withFilesystems(t, func(store *imagestore.ImageStore, t *testing.T) {
 		snapshotName := createSnapshot(t, store, false)
-		testDownload(t, store, "", 400)
-		testDownload(t, store, "qwerty", 404)
-		testDownload(t, store, snapshotName, 200)
+		testDownload(t, store, "", http.StatusBadRequest)
+		testDownload(t, store, "qwerty", http.StatusNotFound)
+		testDownload(t, store, snapshotName, http.StatusOK)
 	})
 }
