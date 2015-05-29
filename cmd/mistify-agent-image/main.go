@@ -3,23 +3,23 @@ package main
 import (
 	"net"
 	"strconv"
-	"strings"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/mistifyio/lochness/pkg/hostport"
 	"github.com/mistifyio/mistify-agent-image"
 	logx "github.com/mistifyio/mistify-logrus-ext"
 	flag "github.com/spf13/pflag"
 )
 
 func main() {
-	var zpool, imageServer, logLevel string
+	var zpool, imageService, logLevel string
 	var port uint
 
 	flag.UintVarP(&port, "port", "p", 19999, "listen port")
 	flag.StringVarP(&zpool, "zpool", "z", "mistify", "zpool")
 	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
-	flag.StringVarP(&imageServer, "image-service", "i", "images.service.lochness.local", "image service. srv query used to find port if not specified")
+	flag.StringVarP(&imageService, "image-service", "i", "images.service.lochness.local", "image service. srv query used to find port if not specified")
 	flag.Parse()
 
 	if err := logx.DefaultSetup(logLevel); err != nil {
@@ -30,19 +30,18 @@ func main() {
 	}
 
 	// Parse image service and do any necessary lookups
-	// Using strings.Split instead of net.SplitHostPort since the latter errors
-	// it no port is present and it doesn't provide any error type checking
-	// convenience methods
-	imageServerParts := strings.Split(imageServer, ":")
-	partsLength := len(imageServerParts)
-	// Empty or too many colons
-	if partsLength == 0 || partsLength > 2 {
-		log.WithField("imageServer", imageServer).Fatal("invalid image-service value")
+	iHost, iPort, err := hostport.Split(imageService)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":        err,
+			"imageService": imageService,
+			"func":         "hostport.Split",
+		}).Fatal("host port split failed")
 	}
 
 	// Try to lookup port if only host/service is provided
-	if partsLength == 1 || imageServerParts[1] == "" {
-		_, addrs, err := net.LookupSRV("", "", imageServer)
+	if iPort == "" {
+		_, addrs, err := net.LookupSRV("", "", iHost)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
@@ -50,14 +49,14 @@ func main() {
 			}).Fatal("srv lookup failed")
 		}
 		if len(addrs) == 0 {
-			log.WithField("imageServer", imageServer).Fatal("invalid image-service value")
+			log.WithField("imageService", iHost).Fatal("invalid host value")
 		}
-		imageServerParts[1] = strconv.FormatUint(uint64(addrs[0].Port), 10)
+		iPort = strconv.FormatUint(uint64(addrs[0].Port), 10)
 	}
-	imageServer = net.JoinHostPort(imageServerParts[0], imageServerParts[1])
+	imageService = net.JoinHostPort(iHost, iPort)
 
 	store, err := imagestore.Create(imagestore.Config{
-		ImageServer: imageServer,
+		ImageServer: imageService,
 		Zpool:       zpool,
 	})
 	if err != nil {
