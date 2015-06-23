@@ -19,7 +19,7 @@ func main() {
 	flag.UintVarP(&port, "port", "p", 19999, "listen port")
 	flag.StringVarP(&zpool, "zpool", "z", "mistify", "zpool")
 	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
-	flag.StringVarP(&imageService, "image-service", "i", "images.service.lochness.local", "image service. srv query used to find port if not specified")
+	flag.StringVarP(&imageService, "image-service", "i", "image.services.lochness.local", "image service. srv query used to find port if not specified")
 	flag.Parse()
 
 	if err := logx.DefaultSetup(logLevel); err != nil {
