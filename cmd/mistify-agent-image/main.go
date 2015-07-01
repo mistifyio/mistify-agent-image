@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"net"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/mistifyio/lochness/pkg/hostport"
 	"github.com/mistifyio/mistify-agent-image"
 	logx "github.com/mistifyio/mistify-logrus-ext"
 	flag "github.com/spf13/pflag"
@@ -28,32 +25,6 @@ func main() {
 			"func":  "logx.DefaultSetup",
 		}).Fatal("failed to set up logrus")
 	}
-
-	// Parse image service and do any necessary lookups
-	iHost, iPort, err := hostport.Split(imageService)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":        err,
-			"imageService": imageService,
-			"func":         "hostport.Split",
-		}).Fatal("host port split failed")
-	}
-
-	// Try to lookup port if only host/service is provided
-	if iPort == "" {
-		_, addrs, err := net.LookupSRV("", "", iHost)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-				"func":  "net.LookupSRV",
-			}).Fatal("srv lookup failed")
-		}
-		if len(addrs) == 0 {
-			log.WithField("imageService", iHost).Fatal("invalid host value")
-		}
-		iPort = fmt.Sprintf("%d", addrs[0].Port)
-	}
-	imageService = net.JoinHostPort(iHost, iPort)
 
 	store, err := imagestore.Create(imagestore.Config{
 		ImageServer: imageService,

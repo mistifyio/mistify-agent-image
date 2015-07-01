@@ -19,6 +19,7 @@ import (
 	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/client"
 	"github.com/mistifyio/mistify-agent/rpc"
+	netutil "github.com/mistifyio/util/net"
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
@@ -202,9 +203,13 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 
 	// If it isn't here or ready, go get it
 	if image == nil || image.Status != "complete" {
+		hostport, err := netutil.HostWithPort(store.config.ImageServer)
+		if err != nil {
+			return err
+		}
 		req := &fetchRequest{
 			name:    request.Id,
-			source:  fmt.Sprintf("http://%s/images/%s/download", store.config.ImageServer, request.Id),
+			source:  fmt.Sprintf("http://%s/images/%s/download", hostport, request.Id),
 			tempdir: store.tempDir,
 			dest:    filepath.Join(store.dataset, request.Id),
 		}
@@ -215,7 +220,6 @@ func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest
 		}
 
 		// Get the image data
-		var err error
 		image, err = store.getImage(request.Id)
 		if err != nil {
 			return err
