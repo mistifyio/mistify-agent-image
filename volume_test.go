@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/bakins/test-helpers"
 	"github.com/mistifyio/mistify-agent-image"
 	"github.com/mistifyio/mistify-agent/rpc"
+	logx "github.com/mistifyio/mistify-logrus-ext"
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
@@ -26,21 +28,25 @@ func withImageStore(t *testing.T, fn func(store *imagestore.ImageStore, t *testi
 	tempfiles := make([]string, 3)
 	for i := range tempfiles {
 		f, _ := ioutil.TempFile("/tmp/", "zfs-")
-		defer f.Close()
+		defer logx.LogReturnedErr(f.Close, log.Fields{
+			"filename": f.Name(),
+		}, "failed to close tempfile")
 		err := f.Truncate(pow2(30))
 		helpers.Ok(t, err)
 		tempfiles[i] = f.Name()
-		defer os.Remove(f.Name())
+		defer logx.LogReturnedErr(func() error { return os.Remove(f.Name()) },
+			log.Fields{"filename": f.Name()},
+			"failed to remoev tempfile")
 	}
 
 	pool, err := zfs.CreateZpool("test", nil, tempfiles...)
 	helpers.Ok(t, err)
-	defer pool.Destroy()
+	defer logx.LogReturnedErr(pool.Destroy, nil, "unable to destroy zpool")
 
 	store, err := imagestore.Create(imagestore.Config{Zpool: "test"})
 	helpers.Ok(t, err)
 	go store.Run()
-	defer store.Destroy()
+	defer logx.LogReturnedErr(store.Destroy, nil, "unable to destroy imagestore")
 
 	fn(store, t)
 }

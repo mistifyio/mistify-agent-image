@@ -19,6 +19,7 @@ import (
 	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/client"
 	"github.com/mistifyio/mistify-agent/rpc"
+	logx "github.com/mistifyio/mistify-logrus-ext"
 	netutil "github.com/mistifyio/util/net"
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
@@ -154,7 +155,7 @@ func (store *ImageStore) Run() {
 	<-store.timeToDie
 	store.cloneWorker.Exit()
 	store.fetcher.exit()
-	store.DB.Close()
+	logx.LogReturnedErr(store.DB.Close, nil, "failed to close store")
 }
 
 // RequestClone clones a dataset

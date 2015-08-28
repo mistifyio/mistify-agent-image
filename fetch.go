@@ -15,6 +15,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
+	logx "github.com/mistifyio/mistify-logrus-ext"
 )
 
 type (
@@ -100,13 +101,15 @@ func (f *fetcher) download(req *fetchRequest, dest string) error {
 			}
 		}
 	}()
-	defer temp.Close()
+	defer logx.LogReturnedErr(temp.Close, log.Fields{
+		"filename": temp.Name(),
+	}, "failed to close temp file")
 
 	resp, err := http.Get(req.source)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer logx.LogReturnedErr(resp.Body.Close, nil, "failed to close response body")
 
 	if resp.StatusCode != http.StatusOK {
 		return ErrorHTTPCode{
@@ -143,7 +146,9 @@ func (f *fetcher) importImage(req *fetchRequest) *fetchResponse {
 		fetchResp.err = err
 		return fetchResp
 	}
-	defer cachedFile.Close()
+	defer logx.LogReturnedErr(cachedFile.Close, log.Fields{
+		"filename": filename,
+	}, "failed to close cachefile")
 
 	// Use a response buffer so the first few bytes can be peeked at for file
 	// type detection. Uncompress the image if it is gzipped
@@ -162,7 +167,7 @@ func (f *fetcher) importImage(req *fetchRequest) *fetchResponse {
 			fetchResp.err = err
 			return fetchResp
 		}
-		defer gzipReader.Close()
+		defer logx.LogReturnedErr(gzipReader.Close, nil, "failed to close gzipreader")
 		cacheFileReader = gzipReader
 	}
 
