@@ -235,7 +235,7 @@ func (f *fetcher) fetchImage(req *fetchRequest) {
 	// Save the image information
 	if fetchResp.err == nil {
 		image := &rpc.Image{
-			Id:       req.name,
+			ID:       req.name,
 			Volume:   fetchResp.dataset.Name,
 			Snapshot: fetchResp.snapshot.Name,
 			Size:     fetchResp.snapshot.Volsize / 1024 / 1024,

@@ -48,7 +48,7 @@ func withImageStore(t *testing.T, fn func(store *imagestore.ImageStore, t *testi
 func createVolume(t *testing.T, store *imagestore.ImageStore) {
 	response := &rpc.VolumeResponse{}
 	request := &rpc.VolumeRequest{
-		Id:   "test-volume",
+		ID:   "test-volume",
 		Size: 64,
 	}
 	err := store.CreateVolume(&http.Request{}, request, response)
@@ -74,7 +74,7 @@ func TestCreateVolume(t *testing.T) {
 		err := store.CreateVolume(&http.Request{}, request, response)
 		helpers.Equals(t, "need a valid size", err.Error())
 
-		// Missing Id
+		// Missing ID
 		request.Size = 64
 		err = store.CreateVolume(&http.Request{}, request, response)
 		helpers.Equals(t, "need an id", err.Error())
@@ -92,16 +92,16 @@ func TestGetVolume(t *testing.T) {
 		response := &rpc.VolumeResponse{}
 		request := &rpc.VolumeRequest{}
 
-		// Missing Id
+		// Missing ID
 		err = store.GetVolume(&http.Request{}, request, response)
 		helpers.Equals(t, "need an id", err.Error())
 
 		// Not a volume
-		request.Id = "test2"
+		request.ID = "test2"
 		err = store.GetVolume(&http.Request{}, request, response)
 		helpers.Equals(t, imagestore.ErrNotVolume, err)
 
-		request.Id = "test-volume"
+		request.ID = "test-volume"
 		err = store.GetVolume(&http.Request{}, request, response)
 		helpers.Ok(t, err)
 		helpers.Equals(t, 1, len(response.Volumes))
@@ -115,21 +115,21 @@ func TestDeleteDataset(t *testing.T) {
 		response := &rpc.VolumeResponse{}
 		request := &rpc.VolumeRequest{}
 
-		// Missing Id
+		// Missing ID
 		err := store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Equals(t, "need an id", err.Error())
 
 		// Not found
-		request.Id = "foobar"
+		request.ID = "foobar"
 		err = store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Equals(t, imagestore.ErrNotFound, err)
 
 		// Invalid
-		request.Id = "test-volume*"
+		request.ID = "test-volume*"
 		err = store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Equals(t, imagestore.ErrNotValid, err)
 
-		request.Id = "test-volume"
+		request.ID = "test-volume"
 		err = store.DeleteDataset(&http.Request{}, request, response)
 		helpers.Ok(t, err)
 		helpers.Equals(t, 1, len(response.Volumes))

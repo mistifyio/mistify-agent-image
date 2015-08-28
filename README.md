@@ -163,7 +163,7 @@ func (store *ImageStore) CreateSnapshot(r *http.Request, request *rpc.SnapshotRe
 CreateSnapshot creates a snapshot of a zfs dataset.
 
     Request params:
-    id        string : Req : Id of the zfs dataset to snapshot
+    id        string : Req : ID of the zfs dataset to snapshot
     dest      string : Req : Name of the snapshot
     recursive bool   :     : Recursively create snapshots of descendents
 

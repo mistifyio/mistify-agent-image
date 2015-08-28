@@ -30,7 +30,7 @@ func isZfsInvalid(err error) bool {
 
 // DeleteImage deletes a disk image
 func (store *ImageStore) DeleteImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	image, err := store.getImage(request.Id)
+	image, err := store.getImage(request.ID)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (store *ImageStore) DeleteImage(r *http.Request, request *rpc.ImageRequest,
 			if err != nil {
 				return err
 			}
-			return b.Delete(request.Id)
+			return b.Delete(request.ID)
 		}
 		return nil
 	})
@@ -75,7 +75,7 @@ func (store *ImageStore) CloneImage(r *http.Request, request *rpc.ImageRequest, 
 		return errors.New("need dest")
 	}
 
-	image, err := store.getImage(request.Id)
+	image, err := store.getImage(request.ID)
 	if err != nil {
 		return err
 	}
