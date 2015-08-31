@@ -117,6 +117,8 @@ func TestGetVolume(t *testing.T) {
 func TestDeleteDataset(t *testing.T) {
 	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
 		createVolume(t, store)
+		// 10ms delay to prevent "dataset is busy" error
+		time.Sleep(10 * time.Millisecond)
 
 		response := &rpc.VolumeResponse{}
 		request := &rpc.VolumeRequest{}
