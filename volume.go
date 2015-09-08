@@ -15,7 +15,7 @@ func deviceForDataset(ds *zfs.Dataset) string {
 
 func volumeFromDataset(ds *zfs.Dataset) *rpc.Volume {
 	return &rpc.Volume{
-		Id:     ds.Name,
+		ID:     ds.Name,
 		Size:   ds.Volsize / 1024 / 1024,
 		Device: deviceForDataset(ds),
 	}
@@ -45,11 +45,11 @@ func (store *ImageStore) CreateVolume(r *http.Request, request *rpc.VolumeReques
 
 	}
 
-	if request.Id == "" {
+	if request.ID == "" {
 		return errors.New("need an id")
 	}
 
-	fullID := filepath.Join(store.config.Zpool, request.Id)
+	fullID := filepath.Join(store.config.Zpool, request.ID)
 	ds, err := zfs.CreateVolume(fullID, request.Size*1024*1024, defaultZFSOptions)
 	if err != nil {
 		return err
@@ -66,11 +66,11 @@ func (store *ImageStore) CreateVolume(r *http.Request, request *rpc.VolumeReques
 
 // GetVolume gets information about a zfs volume
 func (store *ImageStore) GetVolume(r *http.Request, request *rpc.VolumeRequest, response *rpc.VolumeResponse) error {
-	if request.Id == "" {
+	if request.ID == "" {
 		return errors.New("need an id")
 	}
 
-	fullID := filepath.Join(store.config.Zpool, request.Id)
+	fullID := filepath.Join(store.config.Zpool, request.ID)
 	ds, err := zfs.GetDataset(fullID)
 	if err != nil {
 		return err
@@ -87,10 +87,10 @@ func (store *ImageStore) GetVolume(r *http.Request, request *rpc.VolumeRequest, 
 
 // DeleteDataset deletes a zfs dataset
 func (store *ImageStore) DeleteDataset(r *http.Request, request *rpc.VolumeRequest, response *rpc.VolumeResponse) error {
-	if request.Id == "" {
+	if request.ID == "" {
 		return errors.New("need an id")
 	}
-	fullID := filepath.Join(store.config.Zpool, request.Id)
+	fullID := filepath.Join(store.config.Zpool, request.ID)
 	ds, err := zfs.GetDataset(fullID)
 	if err != nil {
 		if isZfsNotFound(err) {
