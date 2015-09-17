@@ -1,145 +1,105 @@
 package imagestore_test
 
 import (
-	"io/ioutil"
-	"math"
-	"net/http"
-	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
-	"github.com/bakins/test-helpers"
-	"github.com/mistifyio/mistify-agent-image"
+	"github.com/mistifyio/go-zfs"
 	"github.com/mistifyio/mistify-agent/rpc"
-	logx "github.com/mistifyio/mistify-logrus-ext"
-	"gopkg.in/mistifyio/go-zfs.v1"
+	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/suite"
 )
 
-func pow2(x int) int64 {
-	return int64(math.Pow(2, float64(x)))
+type VolumeTestSuite struct {
+	APITestSuite
 }
 
-func sleep(delay int) {
-	time.Sleep(time.Duration(delay) * time.Second)
+func TestVolumeTestSuite(t *testing.T) {
+	suite.Run(t, new(VolumeTestSuite))
 }
 
-func withImageStore(t *testing.T, fn func(store *imagestore.ImageStore, t *testing.T)) {
-	tempfiles := make([]string, 3)
-	for i := range tempfiles {
-		f, _ := ioutil.TempFile("/tmp/", "zfs-")
-		defer logx.LogReturnedErr(f.Close, log.Fields{
-			"filename": f.Name(),
-		}, "failed to close tempfile")
-		err := f.Truncate(pow2(30))
-		helpers.Ok(t, err)
-		tempfiles[i] = f.Name()
-		defer logx.LogReturnedErr(func() error { return os.Remove(f.Name()) },
-			log.Fields{"filename": f.Name()},
-			"failed to remoev tempfile")
-	}
-
-	pool, err := zfs.CreateZpool("test", nil, tempfiles...)
-	helpers.Ok(t, err)
-	defer logx.LogReturnedErr(pool.Destroy, nil, "unable to destroy zpool")
-
-	store, err := imagestore.Create(imagestore.Config{Zpool: "test"})
-	helpers.Ok(t, err)
-	go store.Run()
-	defer logx.LogReturnedErr(store.Destroy, nil, "unable to destroy imagestore")
-
-	fn(store, t)
-}
-
-func createVolume(t *testing.T, store *imagestore.ImageStore) {
+func (s *VolumeTestSuite) createVolume() (string, *rpc.Volume) {
 	response := &rpc.VolumeResponse{}
 	request := &rpc.VolumeRequest{
-		ID:   "test-volume",
+		ID:   uuid.New(),
 		Size: 64,
 	}
-	err := store.CreateVolume(&http.Request{}, request, response)
-	helpers.Ok(t, err)
-	helpers.Equals(t, 1, len(response.Volumes))
+	_ = s.Client.Do("ImageStore.CreateVolume", request, response)
+	return request.ID, response.Volumes[0]
 }
 
-func TestListVolumes(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
-		response := &rpc.VolumeResponse{}
-		err := store.ListVolumes(&http.Request{}, &rpc.VolumeRequest{}, response)
-		helpers.Ok(t, err)
-		helpers.Equals(t, 0, len(response.Volumes))
-	})
+func (s *VolumeTestSuite) TestList() {
+	response := &rpc.VolumeResponse{}
+	s.NoError(s.Client.Do("ImageStore.ListVolumes", &rpc.VolumeRequest{}, response))
+	s.Len(response.Volumes, 0)
+
+	_, volume := s.createVolume()
+	response = &rpc.VolumeResponse{}
+	s.NoError(s.Client.Do("ImageStore.ListVolumes", &rpc.VolumeRequest{}, response))
+	s.Len(response.Volumes, 1)
+	s.Equal(volume.ID, response.Volumes[0].ID)
 }
 
-func TestCreateVolume(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
-		response := &rpc.VolumeResponse{}
-		request := &rpc.VolumeRequest{}
+func (s *VolumeTestSuite) TestCreate() {
+	response := &rpc.VolumeResponse{}
+	request := &rpc.VolumeRequest{}
 
-		// Invalid size
-		err := store.CreateVolume(&http.Request{}, request, response)
-		helpers.Equals(t, "need a valid size", err.Error())
+	// Invalid size
+	s.Error(s.Client.Do("ImageStore.CreateVolume", request, response), "need a valid size")
 
-		// Missing ID
-		request.Size = 64
-		err = store.CreateVolume(&http.Request{}, request, response)
-		helpers.Equals(t, "need an id", err.Error())
+	// Missing ID
+	request.Size = 64
+	s.Error(s.Client.Do("ImageStore.CreateVolume", request, response), "need an id")
 
-		createVolume(t, store)
-	})
+	// Good
+	request.ID = uuid.New()
+	s.NoError(s.Client.Do("ImageStore.CreateVolume", request, response), "should succeed")
 }
 
-func TestGetVolume(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
-		createVolume(t, store)
-		_, err := zfs.CreateFilesystem("test/test2", defaultZFSOptions)
-		helpers.Ok(t, err)
+func (s *VolumeTestSuite) TestGet() {
+	volumeName, volume := s.createVolume()
 
-		response := &rpc.VolumeResponse{}
-		request := &rpc.VolumeRequest{}
+	fsName := "notAVolume"
+	_, _ = zfs.CreateFilesystem(filepath.Join(s.ID, fsName), defaultZFSOptions)
 
-		// Missing ID
-		err = store.GetVolume(&http.Request{}, request, response)
-		helpers.Equals(t, "need an id", err.Error())
+	response := &rpc.VolumeResponse{}
+	request := &rpc.VolumeRequest{}
 
-		// Not a volume
-		request.ID = "test2"
-		err = store.GetVolume(&http.Request{}, request, response)
-		helpers.Equals(t, imagestore.ErrNotVolume, err)
+	// Missing ID
+	s.Error(s.Client.Do("ImageStore.GetVolume", request, response), "need an id")
 
-		request.ID = "test-volume"
-		err = store.GetVolume(&http.Request{}, request, response)
-		helpers.Ok(t, err)
-		helpers.Equals(t, 1, len(response.Volumes))
-	})
+	// Not a volume
+	request.ID = fsName
+	s.Error(s.Client.Do("ImageStore.GetVolume", request, response), "should not get a non-volume")
+	//helpers.Equals(t, imagestore.ErrNotVolume, err)
+
+	request.ID = volumeName
+	s.NoError(s.Client.Do("ImageStore.GetVolume", request, response), "should not get a non-volume")
+	s.Len(response.Volumes, 1)
+	s.Equal(volume.ID, response.Volumes[0].ID)
 }
 
-func TestDeleteDataset(t *testing.T) {
-	withImageStore(t, func(store *imagestore.ImageStore, t *testing.T) {
-		createVolume(t, store)
-		// 10ms delay to prevent "dataset is busy" error
-		time.Sleep(10 * time.Millisecond)
+func (s *VolumeTestSuite) TestDelete() {
+	volumeName, _ := s.createVolume()
+	// 10ms delay to prevent "dataset is busy" error
+	time.Sleep(10 * time.Millisecond)
 
-		response := &rpc.VolumeResponse{}
-		request := &rpc.VolumeRequest{}
+	response := &rpc.VolumeResponse{}
+	request := &rpc.VolumeRequest{}
 
-		// Missing ID
-		err := store.DeleteDataset(&http.Request{}, request, response)
-		helpers.Equals(t, "need an id", err.Error())
+	// Missing ID
+	s.Error(s.Client.Do("ImageStore.DeleteDataset", request, response), "need an id")
 
-		// Not found
-		request.ID = "foobar"
-		err = store.DeleteDataset(&http.Request{}, request, response)
-		helpers.Equals(t, imagestore.ErrNotFound, err)
+	// Not found
+	request.ID = "foobar"
+	s.Error(s.Client.Do("ImageStore.DeleteDataset", request, response), "should not be found")
 
-		// Invalid
-		request.ID = "test-volume*"
-		err = store.DeleteDataset(&http.Request{}, request, response)
-		helpers.Equals(t, imagestore.ErrNotValid, err)
+	// Invalid
+	request.ID = volumeName + "*"
+	s.Error(s.Client.Do("ImageStore.DeleteDataset", request, response), "invalid volume id")
 
-		request.ID = "test-volume"
-		err = store.DeleteDataset(&http.Request{}, request, response)
-		helpers.Ok(t, err)
-		helpers.Equals(t, 1, len(response.Volumes))
-	})
+	request.ID = volumeName
+	s.NoError(s.Client.Do("ImageStore.DeleteDataset", request, response), "delete should succeed")
+	s.Len(response.Volumes, 1)
 }
