@@ -144,7 +144,10 @@ func Create(config Config) (*ImageStore, error) {
 // Destroy destroys a store
 func (store *ImageStore) Destroy() error {
 	var q struct{}
+	// singal shutdown
 	store.timeToDie <- q
+	// wait for shutdown
+	<-store.timeToDie
 	return nil
 }
 
@@ -152,10 +155,11 @@ func (store *ImageStore) Destroy() error {
 func (store *ImageStore) Run() {
 	store.cloneWorker.Run()
 	store.fetcher.run()
-	<-store.timeToDie
+	q := <-store.timeToDie
 	store.cloneWorker.Exit()
 	store.fetcher.exit()
 	logx.LogReturnedErr(store.DB.Close, nil, "failed to close store")
+	store.timeToDie <- q
 }
 
 // RequestClone clones a dataset
