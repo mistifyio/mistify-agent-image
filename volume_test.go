@@ -11,6 +11,12 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+type volumeTestCase struct {
+	description string
+	request     *rpc.VolumeRequest
+	expectedErr bool
+}
+
 type VolumeTestSuite struct {
 	APITestSuite
 }
@@ -26,7 +32,30 @@ func (s *VolumeTestSuite) createVolume() (string, *rpc.Volume) {
 		Size: 64,
 	}
 	_ = s.Client.Do("ImageStore.CreateVolume", request, response)
+
+	// 10ms delay to prevent "dataset is busy" error
+	time.Sleep(10 * time.Millisecond)
+
 	return request.ID, response.Volumes[0]
+}
+
+func (s *VolumeTestSuite) runTestCases(method string, tests []*volumeTestCase, volume *rpc.Volume) {
+	tests = append(tests, &volumeTestCase{"missing id should fail",
+		&rpc.VolumeRequest{Size: 64}, true})
+
+	for _, test := range tests {
+		response := &rpc.VolumeResponse{}
+		err := s.Client.Do("ImageStore."+method, test.request, response)
+		if test.expectedErr {
+			s.Error(err, test.description)
+		} else {
+			s.NoError(err, test.description)
+			s.Len(response.Volumes, 1)
+			if volume != nil {
+				s.Equal(volume.ID, response.Volumes[0].ID)
+			}
+		}
+	}
 }
 
 func (s *VolumeTestSuite) TestList() {
@@ -42,19 +71,16 @@ func (s *VolumeTestSuite) TestList() {
 }
 
 func (s *VolumeTestSuite) TestCreate() {
-	response := &rpc.VolumeResponse{}
-	request := &rpc.VolumeRequest{}
+	tests := []*volumeTestCase{
+		{"missing size should fail",
+			&rpc.VolumeRequest{ID: "asdf"}, true},
+		{"invalid size should fail",
+			&rpc.VolumeRequest{ID: "asdf", Size: 0}, true},
+		{"successful request",
+			&rpc.VolumeRequest{ID: uuid.New(), Size: 64}, false},
+	}
 
-	// Invalid size
-	s.Error(s.Client.Do("ImageStore.CreateVolume", request, response), "need a valid size")
-
-	// Missing ID
-	request.Size = 64
-	s.Error(s.Client.Do("ImageStore.CreateVolume", request, response), "need an id")
-
-	// Good
-	request.ID = uuid.New()
-	s.NoError(s.Client.Do("ImageStore.CreateVolume", request, response), "should succeed")
+	s.runTestCases("CreateVolume", tests, nil)
 }
 
 func (s *VolumeTestSuite) TestGet() {
@@ -63,43 +89,29 @@ func (s *VolumeTestSuite) TestGet() {
 	fsName := "notAVolume"
 	_, _ = zfs.CreateFilesystem(filepath.Join(s.ID, fsName), defaultZFSOptions)
 
-	response := &rpc.VolumeResponse{}
-	request := &rpc.VolumeRequest{}
+	tests := []*volumeTestCase{
+		{"non-existant volume should fail",
+			&rpc.VolumeRequest{ID: "adsf"}, true},
+		{"non-volume should fail",
+			&rpc.VolumeRequest{ID: "fsName"}, true},
+		{"successful request",
+			&rpc.VolumeRequest{ID: volumeName}, false},
+	}
 
-	// Missing ID
-	s.Error(s.Client.Do("ImageStore.GetVolume", request, response), "need an id")
-
-	// Not a volume
-	request.ID = fsName
-	s.Error(s.Client.Do("ImageStore.GetVolume", request, response), "should not get a non-volume")
-	//helpers.Equals(t, imagestore.ErrNotVolume, err)
-
-	request.ID = volumeName
-	s.NoError(s.Client.Do("ImageStore.GetVolume", request, response), "should not get a non-volume")
-	s.Len(response.Volumes, 1)
-	s.Equal(volume.ID, response.Volumes[0].ID)
+	s.runTestCases("GetVolume", tests, volume)
 }
 
 func (s *VolumeTestSuite) TestDelete() {
-	volumeName, _ := s.createVolume()
-	// 10ms delay to prevent "dataset is busy" error
-	time.Sleep(10 * time.Millisecond)
+	volumeName, volume := s.createVolume()
 
-	response := &rpc.VolumeResponse{}
-	request := &rpc.VolumeRequest{}
+	tests := []*volumeTestCase{
+		{"non-existant volume should fail",
+			&rpc.VolumeRequest{ID: "adsf"}, true},
+		{"non-existant volume should fail",
+			&rpc.VolumeRequest{ID: volumeName + "*"}, true},
+		{"volume id should succeed",
+			&rpc.VolumeRequest{ID: volumeName}, false},
+	}
 
-	// Missing ID
-	s.Error(s.Client.Do("ImageStore.DeleteDataset", request, response), "need an id")
-
-	// Not found
-	request.ID = "foobar"
-	s.Error(s.Client.Do("ImageStore.DeleteDataset", request, response), "should not be found")
-
-	// Invalid
-	request.ID = volumeName + "*"
-	s.Error(s.Client.Do("ImageStore.DeleteDataset", request, response), "invalid volume id")
-
-	request.ID = volumeName
-	s.NoError(s.Client.Do("ImageStore.DeleteDataset", request, response), "delete should succeed")
-	s.Len(response.Volumes, 1)
+	s.runTestCases("DeleteDataset", tests, volume)
 }
