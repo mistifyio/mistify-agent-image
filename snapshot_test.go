@@ -42,6 +42,7 @@ func TestSnapshotTestSuite(t *testing.T) {
 	suite.Run(t, new(SnapshotTestSuite))
 }
 
+// getID helps build various dataset ids with the correct format
 func (s *SnapshotTestSuite) getID(zpool, parent, child bool, snapshotName string) string {
 	pathParts := make([]string, 3)
 	if zpool {
@@ -77,28 +78,41 @@ func (s *SnapshotTestSuite) createSnapshot(recursive bool) string {
 }
 
 func (s *SnapshotTestSuite) TestCreate() {
-	response := &rpc.SnapshotResponse{}
-	request := &rpc.SnapshotRequest{
-		ID: s.getID(false, true, false, ""),
+	id := s.getID(false, true, false, "")
+	dest := uuid.New()
+
+	tests := []struct {
+		description string
+		request     *rpc.SnapshotRequest
+		expectedErr bool
+	}{
+		{"missing id",
+			&rpc.SnapshotRequest{}, true},
+		{"invalid id",
+			&rpc.SnapshotRequest{ID: "+*?@#$"}, true},
+		{"non-existant id",
+			&rpc.SnapshotRequest{ID: "asdf"}, true},
+		{"missing destination",
+			&rpc.SnapshotRequest{ID: id}, true},
+		{"invalid destination",
+			&rpc.SnapshotRequest{ID: id, Dest: "-?_&"}, true},
+		{"successful snapshot",
+			&rpc.SnapshotRequest{ID: id, Dest: dest}, false},
+		{"duplicate snapshot",
+			&rpc.SnapshotRequest{ID: id, Dest: dest}, true},
+		{"snapshot of snapshot",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, dest), Dest: dest}, true},
 	}
 
-	// No dest
-	s.Error(s.Client.Do("ImageStore.CreateSnapshot", request, response), "dest should be required")
-
-	// Invalid dest
-	request.Dest = "-?_&"
-	s.Error(s.Client.Do("ImageStore.CreateSnapshot", request, response), "dest should be invalid")
-
-	// Successful
-	request.Dest = uuid.New()
-	s.NoError(s.Client.Do("ImageStore.CreateSnapshot", request, response), "snapshot should succeed")
-
-	// Snapshot already exists
-	s.Error(s.Client.Do("ImageStore.CreateSnapshot", request, response), "dataset should already exist")
-
-	// Snapshot of a snapshot
-	request.ID = s.getID(false, true, false, request.Dest)
-	s.Error(s.Client.Do("ImageStore.CreateSnapshot", request, response), "should not be able to snapshot a snapshot")
+	for _, test := range tests {
+		response := rpc.SnapshotResponse{}
+		err := s.Client.Do("ImageStore.CreateSnapshot", test.request, response)
+		if test.expectedErr {
+			s.Error(err, test.description)
+		} else {
+			s.NoError(err, test.description)
+		}
+	}
 }
 
 func (s *SnapshotTestSuite) TestCreateRecursive() {
@@ -109,62 +123,115 @@ func (s *SnapshotTestSuite) TestCreateRecursive() {
 		Recursive: true,
 	}
 	s.NoError(s.Client.Do("ImageStore.CreateSnapshot", request, response), "snapshot should succeed")
+	s.Len(response.Snapshots, 2)
 }
 
 func (s *SnapshotTestSuite) TestList() {
-	response := &rpc.SnapshotResponse{}
-
-	// List on a clean setup
-	request := &rpc.SnapshotRequest{}
-	s.NoError(s.Client.Do("ImageStore.ListSnapshots", request, response), "list should succeed")
-	snapshots := response.Snapshots
-	s.Len(snapshots, 0)
-
-	// Create snapshots recursively, with one descendent
-	snapshotName := s.createSnapshot(true)
-
-	// List from the top level
-	request = &rpc.SnapshotRequest{}
-	s.NoError(s.Client.Do("ImageStore.ListSnapshots", request, response), "list should succeed")
-	snapshots = response.Snapshots
-	s.Len(snapshots, 2)
-	s.Equal(s.getID(true, true, false, snapshotName), snapshots[0].ID)
-	s.Equal(s.getID(true, true, true, snapshotName), snapshots[1].ID)
-
-	// List from the descendent
-	request = &rpc.SnapshotRequest{
-		ID: s.getID(false, true, true, ""),
+	tests := []struct {
+		description  string
+		request      *rpc.SnapshotRequest
+		numSnapshots int
+		expectedErr  bool
+	}{
+		{"list before snapshots",
+			&rpc.SnapshotRequest{}, 0, false},
+		{"list after snapshots",
+			&rpc.SnapshotRequest{}, 2, false},
+		{"list with id",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, true, "")}, 1, false},
+		{"list with invalid id",
+			&rpc.SnapshotRequest{ID: "asdf"}, 0, true},
 	}
-	s.NoError(s.Client.Do("ImageStore.ListSnapshots", request, response), "list should succeed")
-	snapshots = response.Snapshots
-	s.Len(snapshots, 1)
-	s.Equal(s.getID(true, true, true, snapshotName), snapshots[0].ID)
+
+	for i, test := range tests {
+		response := &rpc.SnapshotResponse{}
+		err := s.Client.Do("ImageStore.ListSnapshots", test.request, response)
+		if test.expectedErr {
+			s.Error(err, test.description)
+		} else {
+			s.NoError(err, test.description)
+		}
+		s.Len(response.Snapshots, test.numSnapshots, test.description)
+
+		// Create snapshots after the first empty list
+		if i == 0 {
+			// Create snapshots recursively, with one descendent
+			_ = s.createSnapshot(true)
+		}
+	}
 }
 
 func (s *SnapshotTestSuite) TestGet() {
 	snapshotName := s.createSnapshot(true)
 
-	response := &rpc.SnapshotResponse{}
-	request := &rpc.SnapshotRequest{
-		ID: s.getID(false, true, false, snapshotName),
+	tests := []struct {
+		description  string
+		request      *rpc.SnapshotRequest
+		numSnapshots int
+		expectedErr  bool
+	}{
+		{"missing id",
+			&rpc.SnapshotRequest{}, 0, true},
+		{"invalid id",
+			&rpc.SnapshotRequest{ID: "+*%$@"}, 0, true},
+		{"non-existant id",
+			&rpc.SnapshotRequest{ID: "asdf"}, 0, true},
+		{"real id",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, snapshotName)}, 1, false},
+		{"not a snapshot",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, "")}, 0, true},
 	}
 
-	s.NoError(s.Client.Do("ImageStore.GetSnapshot", request, response), "list should succeed")
-	snapshots := response.Snapshots
-	s.Len(snapshots, 1)
-	s.Equal(s.getID(true, true, false, snapshotName), snapshots[0].ID)
+	for _, test := range tests {
+		response := &rpc.SnapshotResponse{}
+		err := s.Client.Do("ImageStore.GetSnapshot", test.request, response)
+		if test.expectedErr {
+			s.Error(err, test.description)
+		} else {
+			s.NoError(err, test.description)
+		}
+		snapshots := response.Snapshots
+		s.Len(snapshots, test.numSnapshots, test.description)
+	}
 }
 
 func (s *SnapshotTestSuite) TestDelete() {
-	snapshotName := s.createSnapshot(true)
+	snapshotName := s.createSnapshot(false)
+	snapshotNameRecursive := s.createSnapshot(true)
 
-	response := &rpc.SnapshotResponse{}
-	request := &rpc.SnapshotRequest{
-		ID: s.getID(false, true, false, snapshotName),
+	tests := []struct {
+		description  string
+		request      *rpc.SnapshotRequest
+		numSnapshots int
+		expectedErr  bool
+	}{
+		{"missing id",
+			&rpc.SnapshotRequest{}, 0, true},
+		{"invalid id",
+			&rpc.SnapshotRequest{ID: "+*%$@"}, 0, true},
+		{"non-existant id",
+			&rpc.SnapshotRequest{ID: "asdf"}, 0, true},
+		{"real id",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, snapshotName)}, 1, false},
+		{"recursive with bad id",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, ""), Recursive: true}, 0, true},
+		{"recursive id",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, snapshotNameRecursive), Recursive: true}, 2, false},
+		{"not a snapshot",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, "")}, 0, true},
 	}
 
-	s.NoError(s.Client.Do("ImageStore.DeleteSnapshot", request, response), "list should succeed")
-	s.Len(response.Snapshots, 1)
+	for _, test := range tests {
+		response := &rpc.SnapshotResponse{}
+		err := s.Client.Do("ImageStore.DeleteSnapshot", test.request, response)
+		snapshots := response.Snapshots
+		s.Len(snapshots, test.numSnapshots, test.description)
+		if test.expectedErr {
+			s.Error(err, test.description)
+		} else {
+			s.NoError(err, test.description)
+		}
+	}
 }
 
 func (s *SnapshotTestSuite) TestDeleteRecursive() {
@@ -204,23 +271,32 @@ func (s *SnapshotTestSuite) TestRollbackOlder() {
 }
 
 func (s *SnapshotTestSuite) TestDownload() {
-	snapshotName := s.createSnapshot(false)
+	snapshotName := s.createSnapshot(true)
 	// special client for the non-rpc call
 	client, _ := rpc.NewClient(uint(s.Port), "/snapshots/download")
-	request := &rpc.SnapshotRequest{}
 
-	request.ID = ""
-	resp := httptest.NewRecorder()
-	client.DoRaw(request, resp)
-	s.Equal(http.StatusBadRequest, resp.Code)
+	tests := []struct {
+		description        string
+		request            *rpc.SnapshotRequest
+		expectedStatusCode int
+	}{
+		{"misisng request",
+			nil, http.StatusBadRequest},
+		{"missing id",
+			&rpc.SnapshotRequest{}, http.StatusBadRequest},
+		{"invalid id",
+			&rpc.SnapshotRequest{ID: "+*%$@"}, http.StatusBadRequest},
+		{"non-existant id",
+			&rpc.SnapshotRequest{ID: "asdf"}, http.StatusNotFound},
+		{"real id",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, snapshotName)}, http.StatusOK},
+		{"not a snapshot",
+			&rpc.SnapshotRequest{ID: s.getID(false, true, false, "")}, http.StatusBadRequest},
+	}
 
-	request.ID = "asdf"
-	resp = httptest.NewRecorder()
-	client.DoRaw(request, resp)
-	s.Equal(http.StatusNotFound, resp.Code)
-
-	request.ID = s.getID(false, true, false, snapshotName)
-	resp = httptest.NewRecorder()
-	client.DoRaw(request, resp)
-	s.Equal(http.StatusOK, resp.Code)
+	for _, test := range tests {
+		response := httptest.NewRecorder()
+		client.DoRaw(test.request, response)
+		s.Equal(test.expectedStatusCode, response.Code)
+	}
 }
