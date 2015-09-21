@@ -5,7 +5,6 @@ package imagestore
 // - Add a job to compare disk to metadata, remove any metadata that has no dataset - the opposite is harder
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 	"strings"
 	"syscall"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/client"
 	"github.com/mistifyio/mistify-agent/rpc"
@@ -159,38 +157,6 @@ func (store *ImageStore) Run() {
 	store.fetcher.exit()
 	logx.LogReturnedErr(store.DB.Close, nil, "failed to close store")
 	store.timeToDie <- q
-}
-
-// RequestClone clones a dataset
-func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
-
-	log.WithField("RequestClone", dest).Info()
-
-	i := &rpc.Image{}
-
-	err := store.DB.Transaction(func(tx *kvite.Tx) error {
-		b, err := tx.Bucket("images")
-		if err != nil {
-			return err
-		}
-		if b == nil {
-			return ErrNotFound
-		}
-		v, err := b.Get(name)
-		if err != nil {
-			return err
-		}
-		if v == nil {
-			return ErrNotFound
-		}
-		return json.Unmarshal(v, &i)
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return store.cloneWorker.Clone(i.Snapshot, dest)
 }
 
 // TODO: have a background thread to update from datasets?  no images should come through

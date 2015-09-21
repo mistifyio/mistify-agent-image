@@ -195,6 +195,38 @@ func (store *ImageStore) CloneImage(r *http.Request, request *rpc.ImageRequest, 
 	return nil
 }
 
+// RequestClone clones a dataset
+func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
+
+	log.WithField("RequestClone", dest).Info()
+
+	i := &rpc.Image{}
+
+	err := store.DB.Transaction(func(tx *kvite.Tx) error {
+		b, err := tx.Bucket("images")
+		if err != nil {
+			return err
+		}
+		if b == nil {
+			return ErrNotFound
+		}
+		v, err := b.Get(name)
+		if err != nil {
+			return err
+		}
+		if v == nil {
+			return ErrNotFound
+		}
+		return json.Unmarshal(v, &i)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return store.cloneWorker.Clone(i.Snapshot, dest)
+}
+
 func (store *ImageStore) getImage(id string) (*rpc.Image, error) {
 	var image rpc.Image
 	err := store.DB.Transaction(func(tx *kvite.Tx) error {

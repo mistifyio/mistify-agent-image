@@ -176,3 +176,35 @@ func (s *ImageTestSuite) TestCloneImage() {
 		}
 	}
 }
+
+func (s *ImageTestSuite) TestRequestClone() {
+	image := s.fetchImage()
+	dest := filepath.Join(filepath.Dir(image.Volume), uuid.New())
+
+	tests := []struct {
+		description string
+		name        string
+		dest        string
+		expectedErr bool
+	}{
+		{"missing id",
+			"", dest, true},
+		{"missing dest",
+			"asdf", "", true},
+		{"non-existant id",
+			"asdf", dest, true},
+		{"valid id",
+			s.ImageID, dest, false},
+	}
+
+	for _, test := range tests {
+		dataset, err := s.Store.RequestClone(test.name, test.dest)
+		if test.expectedErr {
+			s.Error(err)
+			s.Nil(dataset)
+		} else {
+			s.NoError(err)
+			s.Equal(dest, dataset.Name)
+		}
+	}
+}
