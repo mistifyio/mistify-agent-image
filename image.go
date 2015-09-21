@@ -10,8 +10,6 @@ import (
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
-type ()
-
 func isZfsNotFound(err error) bool {
 	if err == nil {
 		return false

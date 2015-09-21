@@ -18,13 +18,14 @@ import (
 
 type APITestSuite struct {
 	suite.Suite
-	ID       string
-	ZpoolDir string
-	Zpool    *zfs.Zpool
-	Port     int
-	Store    *imagestore.ImageStore
-	Server   *graceful.Server
-	Client   *rpc.Client
+	ID          string
+	ZpoolDir    string
+	Zpool       *zfs.Zpool
+	Port        int
+	StoreConfig imagestore.Config
+	Store       *imagestore.ImageStore
+	Server      *graceful.Server
+	Client      *rpc.Client
 }
 
 func (s *APITestSuite) SetupSuite() {
@@ -39,6 +40,7 @@ func (s *APITestSuite) SetupTest() {
 
 	// Create a zpool
 	s.ID = "mist-" + uuid.New()
+	s.StoreConfig.Zpool = s.ID
 	s.ZpoolDir, err = ioutil.TempDir("", "APITestSuite-"+s.ID)
 	require.NoError(err, "creating tempdir")
 	zpoolFileNames := make([]string, 3)
@@ -58,7 +60,7 @@ func (s *APITestSuite) SetupTest() {
 	require.NoError(err, "create zpool")
 
 	// Run the ImageStore
-	s.Store, err = imagestore.Create(imagestore.Config{Zpool: s.ID})
+	s.Store, err = imagestore.Create(s.StoreConfig)
 	require.NoError(err)
 	go s.Store.Run()
 	s.Server = s.Store.RunHTTP(uint(s.Port))
