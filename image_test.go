@@ -142,10 +142,10 @@ func (s *ImageTestSuite) TestDeleteImage() {
 	s.runTestCases("DeleteImage", nil)
 }
 
-/* TODO: Sort out the clone functionality and then test it
+// TODO: Sort out the clone functionality and then test it better
 func (s *ImageTestSuite) TestCloneImage() {
 	image := s.fetchImage()
-	dest := filepath.Join(filepath.Dir(image).Volumeuuid.New()
+	dest := filepath.Join(filepath.Dir(image.Volume), uuid.New())
 
 	tests := []struct {
 		description string
@@ -154,6 +154,8 @@ func (s *ImageTestSuite) TestCloneImage() {
 	}{
 		{"missing id",
 			&rpc.ImageRequest{Dest: dest}, true},
+		{"missing dest",
+			&rpc.ImageRequest{ID: "asdf"}, true},
 		{"non-existant id",
 			&rpc.ImageRequest{ID: "asdf", Dest: dest}, true},
 		{"valid id",
@@ -174,4 +176,3 @@ func (s *ImageTestSuite) TestCloneImage() {
 		}
 	}
 }
-*/
