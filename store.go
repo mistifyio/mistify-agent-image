@@ -99,6 +99,18 @@ func Create(config Config) (*ImageStore, error) {
 		}
 	}
 
+	guestPath := filepath.Join(config.Zpool, "guests")
+	if _, err := zfs.GetDataset(guestPath); err != nil {
+		if strings.Contains(err.Error(), "dataset does not exist") {
+			_, err := zfs.CreateFilesystem(guestPath, nil)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+
 	fi, err := os.Stat(store.tempDir)
 	if err != nil {
 		if os.IsNotExist(err) {
