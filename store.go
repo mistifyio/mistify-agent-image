@@ -272,10 +272,11 @@ func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestReq
 
 		disk.Volume = fmt.Sprintf("%s/guests/%s/disk-%d", store.config.Zpool, guest.ID, i)
 
-		_, err := zfs.GetDataset(disk.Volume)
+		ds, err := zfs.GetDataset(disk.Volume)
 
 		if err == nil {
 			//already exists
+			disk.Source = deviceForDataset(ds)
 			continue
 		} else {
 			if !strings.Contains(err.Error(), "does not exist") {
