@@ -48,7 +48,7 @@ func (s *ImageTestSuite) runTestCases(method string, tests []*imageTestCase) {
 		} else {
 			s.NoError(err, msg("shouldn't error"))
 			s.Len(images, 1, msg("should return the correct number of images"))
-			s.Equal(s.ImageID, images[0].ID, msg("should return the correct image"))
+			s.Equal(test.request.ID, images[0].ID, msg("should return the correct image"))
 			s.Equal("complete", images[0].Status, msg("should be a complete image"))
 		}
 	}
@@ -58,6 +58,8 @@ func (s *ImageTestSuite) TestRequestImage() {
 	tests := []*imageTestCase{
 		{"valid id already fetched",
 			&rpc.ImageRequest{ID: s.ImageID}, false},
+		{"gzipped image",
+			&rpc.ImageRequest{ID: "gzipID"}, false},
 	}
 
 	s.runTestCases("RequestImage", tests)

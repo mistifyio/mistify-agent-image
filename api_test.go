@@ -2,6 +2,7 @@ package imagestore_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -43,13 +44,24 @@ func (s *APITestSuite) SetupSuite() {
 	s.Client, _ = rpc.NewClient(uint(s.Port), "")
 
 	s.ImageService = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != fmt.Sprintf("/images/%s/download", s.ImageID) {
-			http.NotFound(w, r)
+		if r.URL.Path == fmt.Sprintf("/images/%s/download", s.ImageID) {
+			if _, err := w.Write(s.ImageData); err != nil {
+				log.WithField("error", err).Error("Failed to write mock image data to response")
+			}
 			return
 		}
-		if _, err := w.Write(s.ImageData); err != nil {
-			log.WithField("error", err).Error("Failed to write mock image data to response")
+
+		if r.URL.Path == "/images/gzipID/download" {
+			gzipWriter := gzip.NewWriter(w)
+			defer gzipWriter.Close()
+			if _, err := gzipWriter.Write(s.ImageData); err != nil {
+				log.WithField("error", err).Error("Failed to write mock image data to response")
+			}
+			return
 		}
+
+		http.NotFound(w, r)
+		return
 	}))
 
 	imageURL, _ := url.Parse(s.ImageService.URL)
