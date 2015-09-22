@@ -114,9 +114,8 @@ func (store *ImageStore) GetImage(r *http.Request, request *rpc.ImageRequest, re
 	image, err := store.getImage(request.ID)
 	if err != nil {
 		return err
-	} else {
-		images = append(images, image)
 	}
+	images = append(images, image)
 
 	// not found is an empty slice
 	*response = rpc.ImageResponse{

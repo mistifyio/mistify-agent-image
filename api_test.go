@@ -56,7 +56,7 @@ func (s *APITestSuite) SetupSuite() {
 
 		if r.URL.Path == "/images/gzipID/download" {
 			gzipWriter := gzip.NewWriter(w)
-			defer gzipWriter.Close()
+			defer logx.LogReturnedErr(gzipWriter.Close, nil, "failed to close gzip writer")
 			if _, err := gzipWriter.Write(s.ImageData); err != nil {
 				log.WithField("error", err).Error("Failed to write mock image data to response")
 			}
@@ -124,7 +124,7 @@ func (s *APITestSuite) TearDownTest() {
 	stopChan := s.Server.StopChan()
 	s.Server.Stop(5 * time.Second)
 	<-stopChan
-	s.Store.Destroy()
+	logx.LogReturnedErr(s.Store.Destroy, nil, "failed to stop/destroy store")
 
 	// Clean up zfs
 	logx.LogReturnedErr(s.Zpool.Destroy, nil, "unable to destroy zpool "+s.ID)

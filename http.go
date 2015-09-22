@@ -25,7 +25,7 @@ func (store *ImageStore) RunHTTP(port uint) *graceful.Server {
 		Timeout: 5 * time.Second,
 		Server:  s.HTTPServer,
 	}
-	go server.ListenAndServe()
+	go listenAndServe(server)
 	return server
 }
 
