@@ -27,6 +27,7 @@ type SnapshotTestSuite struct {
 func (s *SnapshotTestSuite) SetupTest() {
 	s.APITestSuite.SetupTest()
 
+	// Create a heirarchy of filesystems for snapshotting
 	s.ParentFSName = uuid.New()
 	s.ChildFSName = uuid.New()
 
@@ -65,6 +66,7 @@ func (s *SnapshotTestSuite) getID(zpool, parent, child bool, snapshotName string
 	return strings.Join([]string{path, snapshotName}, "@")
 }
 
+// createSnapshot creates a snapshot of the parent dataset, optionally recursive
 func (s *SnapshotTestSuite) createSnapshot(recursive bool) string {
 	snapshotName := fmt.Sprintf("snap-%s", uuid.New())
 	response := &rpc.SnapshotResponse{}
@@ -96,21 +98,22 @@ func (s *SnapshotTestSuite) TestCreate() {
 			&rpc.SnapshotRequest{ID: id}, true},
 		{"invalid destination",
 			&rpc.SnapshotRequest{ID: id, Dest: "-?_&"}, true},
-		{"successful snapshot",
+		{"valid request",
 			&rpc.SnapshotRequest{ID: id, Dest: dest}, false},
-		{"duplicate snapshot",
+		{"duplicate request",
 			&rpc.SnapshotRequest{ID: id, Dest: dest}, true},
-		{"snapshot of snapshot",
+		{"request to snapshot a snapshot",
 			&rpc.SnapshotRequest{ID: s.getID(false, true, false, dest), Dest: dest}, true},
 	}
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := rpc.SnapshotResponse{}
 		err := s.Client.Do("ImageStore.CreateSnapshot", test.request, response)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
+			s.NoError(err, msg("should not error"))
 		}
 	}
 }
@@ -122,7 +125,7 @@ func (s *SnapshotTestSuite) TestCreateRecursive() {
 		Dest:      uuid.New(),
 		Recursive: true,
 	}
-	s.NoError(s.Client.Do("ImageStore.CreateSnapshot", request, response), "snapshot should succeed")
+	s.NoError(s.Client.Do("ImageStore.CreateSnapshot", request, response))
 	s.Len(response.Snapshots, 2)
 }
 
@@ -144,14 +147,15 @@ func (s *SnapshotTestSuite) TestList() {
 	}
 
 	for i, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := &rpc.SnapshotResponse{}
 		err := s.Client.Do("ImageStore.ListSnapshots", test.request, response)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
+			s.NoError(err, msg("should not error"))
 		}
-		s.Len(response.Snapshots, test.numSnapshots, test.description)
+		s.Len(response.Snapshots, test.numSnapshots, msg("should return correct number of results"))
 
 		// Create snapshots after the first empty list
 		if i == 0 {
@@ -183,15 +187,14 @@ func (s *SnapshotTestSuite) TestGet() {
 	}
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := &rpc.SnapshotResponse{}
 		err := s.Client.Do("ImageStore.GetSnapshot", test.request, response)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
+			s.NoError(err, msg("should not error"))
 		}
-		snapshots := response.Snapshots
-		s.Len(snapshots, test.numSnapshots, test.description)
 	}
 }
 
@@ -222,14 +225,13 @@ func (s *SnapshotTestSuite) TestDelete() {
 	}
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := &rpc.SnapshotResponse{}
 		err := s.Client.Do("ImageStore.DeleteSnapshot", test.request, response)
-		snapshots := response.Snapshots
-		s.Len(snapshots, test.numSnapshots, test.description)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
+			s.NoError(err, msg("should not error"))
 		}
 	}
 }
@@ -243,7 +245,7 @@ func (s *SnapshotTestSuite) TestDeleteRecursive() {
 		Recursive: true,
 	}
 
-	s.NoError(s.Client.Do("ImageStore.DeleteSnapshot", request, response), "list should succeed")
+	s.NoError(s.Client.Do("ImageStore.DeleteSnapshot", request, response))
 	s.Len(response.Snapshots, 2)
 }
 
@@ -254,7 +256,7 @@ func (s *SnapshotTestSuite) TestRollback() {
 	request := &rpc.SnapshotRequest{
 		ID: s.getID(false, true, false, snapshotName),
 	}
-	s.NoError(s.Client.Do("ImageStore.RollbackSnapshot", request, response), "list should succeed")
+	s.NoError(s.Client.Do("ImageStore.RollbackSnapshot", request, response))
 	s.Len(response.Snapshots, 1)
 }
 
@@ -266,7 +268,7 @@ func (s *SnapshotTestSuite) TestRollbackOlder() {
 		ID:                s.getID(false, true, false, snapshotName),
 		DestroyMoreRecent: true,
 	}
-	s.NoError(s.Client.Do("ImageStore.RollbackSnapshot", request, response), "list should succeed")
+	s.NoError(s.Client.Do("ImageStore.RollbackSnapshot", request, response))
 	s.Len(response.Snapshots, 1)
 }
 
@@ -295,8 +297,12 @@ func (s *SnapshotTestSuite) TestDownload() {
 	}
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := httptest.NewRecorder()
 		client.DoRaw(test.request, response)
-		s.Equal(test.expectedStatusCode, response.Code)
+		s.Equal(test.expectedStatusCode, response.Code, msg("should return expected http status code"))
+		if response.Code == http.StatusOK {
+			s.True(len(response.Body.Bytes()) > 0, msg("should return snapshot data"))
+		}
 	}
 }

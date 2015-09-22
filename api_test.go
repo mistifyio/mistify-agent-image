@@ -40,9 +40,12 @@ type APITestSuite struct {
 
 func (s *APITestSuite) SetupSuite() {
 	log.SetLevel(log.FatalLevel)
+
+	// Set up client to interact with API
 	s.Port = 54321
 	s.Client, _ = rpc.NewClient(uint(s.Port), "")
 
+	// Set up a fake ImageService to fetch images from
 	s.ImageService = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == fmt.Sprintf("/images/%s/download", s.ImageID) {
 			if _, err := w.Write(s.ImageData); err != nil {
@@ -63,14 +66,14 @@ func (s *APITestSuite) SetupSuite() {
 		http.NotFound(w, r)
 		return
 	}))
-
 	imageURL, _ := url.Parse(s.ImageService.URL)
-
 	s.StoreConfig.ImageServer = imageURL.Host
 }
 
 func (s *APITestSuite) SetupTest() {
 	var err error
+	// Use require in the setup because zfs can be tricky sometimes with
+	// permissions and such
 	require := s.Require()
 
 	// Create a zpool
@@ -94,17 +97,17 @@ func (s *APITestSuite) SetupTest() {
 	s.Zpool, err = zfs.CreateZpool(s.ID, nil, zpoolFileNames...)
 	require.NoError(err, "create zpool")
 
+	// Set up the image to be served from the test "image service" by creating
+	// a volume, exporting a snapshot, and cleaning up. Only needs to be done
+	// once, but can use an existing zpool if done in test setup.
 	if s.ImageID == "" {
-		// Set up the image to be served from the test "image service" by
-		// creating a volume, exporting a snapshot, and cleaning up. Only needs
-		// to be done once, but can use an existing zpool if done in test setup.
 		s.ImageID = uuid.New()
 		volume, err := zfs.CreateVolume(filepath.Join(s.ID, s.ImageID), uint64(1*1024*1024), defaultZFSOptions)
-		s.Require().NoError(err)
+		require.NoError(err)
 		snapshot, err := volume.Snapshot("test", false)
-		s.Require().NoError(err)
+		require.NoError(err)
 		buff := new(bytes.Buffer)
-		s.Require().NoError(snapshot.SendSnapshot(buff))
+		require.NoError(snapshot.SendSnapshot(buff))
 		s.ImageData = buff.Bytes()
 		s.Require().NoError(volume.Destroy(zfs.DestroyRecursive))
 	}
@@ -117,15 +120,20 @@ func (s *APITestSuite) SetupTest() {
 }
 
 func (s *APITestSuite) TearDownTest() {
+	// Stop the image store
 	stopChan := s.Server.StopChan()
 	s.Server.Stop(5 * time.Second)
 	<-stopChan
 	s.Store.Destroy()
+
+	// Clean up zfs
 	logx.LogReturnedErr(s.Zpool.Destroy, nil, "unable to destroy zpool "+s.ID)
 	logx.LogReturnedErr(func() error { return os.RemoveAll(s.ZpoolDir) },
 		nil, "unable to remove dir "+s.ZpoolDir)
 }
 
+// fetchImage fetches the image from the fake image service, a prerequisite for
+// many tests
 func (s *APITestSuite) fetchImage() *rpc.Image {
 	response := &rpc.ImageResponse{}
 	request := &rpc.ImageRequest{
@@ -136,6 +144,7 @@ func (s *APITestSuite) fetchImage() *rpc.Image {
 }
 
 func init() {
+	// Try to catch zfs permission errors before running any tests
 	if _, err := zfs.ListZpools(); err != nil {
 		log.WithField("error", err).Fatal("zfs error")
 	}

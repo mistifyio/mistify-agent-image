@@ -59,12 +59,13 @@ func (s *StoreTestSuite) TestVerifyDisks() {
 	}
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := &rpc.GuestResponse{}
 		err := s.Client.Do("ImageStore.VerifyDisks", test.request, response)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
+			s.NoError(err, msg("should not error"))
 		}
 	}
 }
@@ -100,14 +101,15 @@ func (s *StoreTestSuite) TestCreateGuestDisks() {
 	}
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := &rpc.GuestResponse{}
 		err := s.Client.Do("ImageStore.CreateGuestDisks", test.request, response)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
+			s.NoError(err, msg("should not error"))
 			for _, d := range response.Guest.Disks {
-				s.NotEmpty(d.Source, test.description)
+				s.NotEmpty(d.Source, msg("disk should have a source"))
 			}
 		}
 	}
@@ -137,13 +139,28 @@ func (s *StoreTestSuite) TestDeleteGuestDisks() {
 	}
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := &rpc.GuestResponse{}
 		err := s.Client.Do("ImageStore.DeleteGuestsDisks", test.request, response)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
-			s.Len(response.Guest.Disks, 0, test.description)
+			s.NoError(err, msg("should not error"))
+			s.Len(response.Guest.Disks, 0, msg("should have no disks"))
+		}
+	}
+}
+
+func testMsgFunc(prefix string) func(...interface{}) string {
+	return func(val ...interface{}) string {
+		if len(val) == 0 {
+			return prefix
+		}
+		msgPrefix := prefix + " : "
+		if len(val) == 1 {
+			return msgPrefix + val[0].(string)
+		} else {
+			return msgPrefix + fmt.Sprintf(val[0].(string), val[1:]...)
 		}
 	}
 }

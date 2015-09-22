@@ -44,15 +44,16 @@ func (s *VolumeTestSuite) runTestCases(method string, tests []*volumeTestCase, v
 		&rpc.VolumeRequest{Size: 64}, true})
 
 	for _, test := range tests {
+		msg := testMsgFunc(test.description)
 		response := &rpc.VolumeResponse{}
 		err := s.Client.Do("ImageStore."+method, test.request, response)
 		if test.expectedErr {
-			s.Error(err, test.description)
+			s.Error(err, msg("should error"))
 		} else {
-			s.NoError(err, test.description)
-			s.Len(response.Volumes, 1)
+			s.NoError(err, msg("should not error"))
+			s.Len(response.Volumes, 1, msg("should return correct number of volumes"))
 			if volume != nil {
-				s.Equal(volume.ID, response.Volumes[0].ID)
+				s.Equal(volume.ID, response.Volumes[0].ID, msg("should return expected volume"))
 			}
 		}
 	}
@@ -72,11 +73,11 @@ func (s *VolumeTestSuite) TestList() {
 
 func (s *VolumeTestSuite) TestCreate() {
 	tests := []*volumeTestCase{
-		{"missing size should fail",
+		{"missing size",
 			&rpc.VolumeRequest{ID: "asdf"}, true},
-		{"invalid size should fail",
+		{"invalid size",
 			&rpc.VolumeRequest{ID: "asdf", Size: 0}, true},
-		{"successful request",
+		{"valid request",
 			&rpc.VolumeRequest{ID: uuid.New(), Size: 64}, false},
 	}
 
@@ -90,11 +91,11 @@ func (s *VolumeTestSuite) TestGet() {
 	_, _ = zfs.CreateFilesystem(filepath.Join(s.ID, fsName), defaultZFSOptions)
 
 	tests := []*volumeTestCase{
-		{"non-existant volume should fail",
+		{"non-existant volume",
 			&rpc.VolumeRequest{ID: "adsf"}, true},
-		{"non-volume should fail",
+		{"request for non-volume",
 			&rpc.VolumeRequest{ID: "fsName"}, true},
-		{"successful request",
+		{"valid request",
 			&rpc.VolumeRequest{ID: volumeName}, false},
 	}
 
@@ -105,11 +106,11 @@ func (s *VolumeTestSuite) TestDelete() {
 	volumeName, volume := s.createVolume()
 
 	tests := []*volumeTestCase{
-		{"non-existant volume should fail",
+		{"non-existant volume",
 			&rpc.VolumeRequest{ID: "adsf"}, true},
-		{"non-existant volume should fail",
+		{"bad volume name",
 			&rpc.VolumeRequest{ID: volumeName + "*"}, true},
-		{"volume id should succeed",
+		{"valid request",
 			&rpc.VolumeRequest{ID: volumeName}, false},
 	}
 
