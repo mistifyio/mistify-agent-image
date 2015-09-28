@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -88,7 +87,7 @@ func (s *APITestSuite) SetupTest() {
 		defer logx.LogReturnedErr(file.Close, log.Fields{
 			"filename": file.Name(),
 		}, "failed to close tempfile")
-		require.NoError(file.Truncate(int64(8*math.Pow10(7))), "truncate file") // 10MB file
+		require.NoError(file.Truncate(int64(8e7)), "truncate file") // 10MB file
 		zpoolFileNames[i] = file.Name()
 		defer logx.LogReturnedErr(func() error { return os.Remove(file.Name()) },
 			log.Fields{"filename": file.Name()},

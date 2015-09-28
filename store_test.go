@@ -49,7 +49,7 @@ func (s *StoreTestSuite) TestVerifyDisks() {
 		{"invalid disk size",
 			&rpc.GuestRequest{Guest: &client.Guest{ID: uuid.New(), Disks: []client.Disk{{}}}}, true},
 		{"too much required space",
-			&rpc.GuestRequest{Guest: &client.Guest{ID: uuid.New(), Disks: []client.Disk{{Size: uint64(math.Pow10(10))}}}}, true},
+			&rpc.GuestRequest{Guest: &client.Guest{ID: uuid.New(), Disks: []client.Disk{{Size: uint64(1e10)}}}}, true},
 		{"valid request with size",
 			&rpc.GuestRequest{Guest: &client.Guest{ID: uuid.New(), Disks: []client.Disk{{Size: uint64(10)}}}}, false},
 		{"invalid image id",

@@ -44,7 +44,7 @@ func (s *ImageTestSuite) runTestCases(method string, tests []*imageTestCase) {
 		images := response.Images
 		if test.expectedErr {
 			s.Error(err, msg("should error"))
-			s.Len(images, 0, msg("bad request shoudln't return any images"))
+			s.Len(images, 0, msg("bad request shouldn't return any images"))
 		} else {
 			s.NoError(err, msg("shouldn't error"))
 			s.Len(images, 1, msg("should return the correct number of images"))
