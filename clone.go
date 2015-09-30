@@ -1,8 +1,7 @@
 package imagestore
 
 import (
-	"fmt"
-
+	log "github.com/Sirupsen/logrus"
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
@@ -50,12 +49,16 @@ func (c *cloneWorker) Clone(source, dest string) (*zfs.Dataset, error) {
 		response: make(chan *cloneResponse),
 	}
 
-	fmt.Printf("Clone: request: %+v\n", request)
+	log.WithFields(log.Fields{
+		"request": request,
+	}).Info("clone request")
 	c.requests <- request
 
 	response := <-request.response
-
-	fmt.Printf("Clone: response:  %+v\n", response)
+	log.WithFields(log.Fields{
+		"request":  request,
+		"response": response,
+	}).Info("clone response")
 
 	return response.dataset, response.err
 }
@@ -67,7 +70,10 @@ func (c *cloneWorker) Run() {
 			case <-c.timeToDie:
 				return
 			case req := <-c.requests:
-				fmt.Printf("Run:  request: %+v\n", req)
+				log.WithFields(log.Fields{
+					"request": req,
+				}).Info("clone response")
+
 				response := &cloneResponse{}
 
 				s, err := zfs.GetDataset(req.source)

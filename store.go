@@ -5,7 +5,6 @@ package imagestore
 // - Add a job to compare disk to metadata, remove any metadata that has no dataset - the opposite is harder
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,12 +14,10 @@ import (
 	"strings"
 	"syscall"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/mistifyio/kvite"
 	"github.com/mistifyio/mistify-agent/client"
 	"github.com/mistifyio/mistify-agent/rpc"
 	logx "github.com/mistifyio/mistify-logrus-ext"
-	netutil "github.com/mistifyio/util/net"
 	"gopkg.in/mistifyio/go-zfs.v1"
 )
 
@@ -102,6 +99,18 @@ func Create(config Config) (*ImageStore, error) {
 		}
 	}
 
+	guestPath := filepath.Join(config.Zpool, "guests")
+	if _, err := zfs.GetDataset(guestPath); err != nil {
+		if strings.Contains(err.Error(), "dataset does not exist") {
+			_, err := zfs.CreateFilesystem(guestPath, nil)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+
 	fi, err := os.Stat(store.tempDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -144,7 +153,10 @@ func Create(config Config) (*ImageStore, error) {
 // Destroy destroys a store
 func (store *ImageStore) Destroy() error {
 	var q struct{}
+	// singal shutdown
 	store.timeToDie <- q
+	// wait for shutdown
+	<-store.timeToDie
 	return nil
 }
 
@@ -152,194 +164,15 @@ func (store *ImageStore) Destroy() error {
 func (store *ImageStore) Run() {
 	store.cloneWorker.Run()
 	store.fetcher.run()
-	<-store.timeToDie
+	q := <-store.timeToDie
 	store.cloneWorker.Exit()
 	store.fetcher.exit()
 	logx.LogReturnedErr(store.DB.Close, nil, "failed to close store")
-}
-
-// RequestClone clones a dataset
-func (store *ImageStore) RequestClone(name, dest string) (*zfs.Dataset, error) {
-
-	log.WithField("RequestClone", dest).Info()
-
-	i := &rpc.Image{}
-
-	err := store.DB.Transaction(func(tx *kvite.Tx) error {
-		b, err := tx.Bucket("images")
-		if err != nil {
-			return err
-		}
-		if b == nil {
-			return ErrNotFound
-		}
-		v, err := b.Get(name)
-		if err != nil {
-			return err
-		}
-		if v == nil {
-			return ErrNotFound
-		}
-		return json.Unmarshal(v, &i)
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return store.cloneWorker.Clone(i.Snapshot, dest)
-}
-
-// RequestImage fetches an image
-func (store *ImageStore) RequestImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	if request.ID == "" {
-		return errors.New("need id")
-	}
-
-	// Check whether it exists locally
-	image, err := store.getImage(request.ID)
-	if err != nil && err != ErrNotFound {
-		return err
-	}
-
-	// If it isn't here or ready, go get it
-	if image == nil || image.Status != "complete" {
-		hostport, err := netutil.HostWithPort(store.config.ImageServer)
-		if err != nil {
-			return err
-		}
-		req := &fetchRequest{
-			name:    request.ID,
-			source:  fmt.Sprintf("http://%s/images/%s/download", hostport, request.ID),
-			tempdir: store.tempDir,
-			dest:    filepath.Join(store.dataset, request.ID),
-		}
-
-		resp := store.fetcher.fetch(req)
-		if resp.err != nil {
-			return resp.err
-		}
-
-		// Get the image data
-		image, err = store.getImage(request.ID)
-		if err != nil {
-			return err
-		}
-	}
-
-	*response = rpc.ImageResponse{
-		Images: []*rpc.Image{
-			image,
-		},
-	}
-	return nil
+	store.timeToDie <- q
 }
 
 // TODO: have a background thread to update from datasets?  no images should come through
 // unless they are in the database
-
-// ListImages lists the disk images
-func (store *ImageStore) ListImages(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	var images []*rpc.Image
-
-	err := store.DB.Transaction(func(tx *kvite.Tx) error {
-		if b, err := tx.Bucket("images"); b != nil {
-			if err != nil {
-				return err
-			}
-			err = b.ForEach(func(k string, v []byte) error {
-				var i rpc.Image
-				if err := json.Unmarshal(v, &i); err != nil {
-					return err
-				}
-				images = append(images, &i)
-				return nil
-			})
-			if err != nil {
-				log.WithField("error", err).Error("failed to unmarshal image json")
-				return err
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return err
-	}
-	*response = rpc.ImageResponse{
-		Images: images,
-	}
-	return nil
-}
-
-func (store *ImageStore) getImage(id string) (*rpc.Image, error) {
-	var image rpc.Image
-	err := store.DB.Transaction(func(tx *kvite.Tx) error {
-		if b, err := tx.Bucket("images"); b != nil {
-			if err != nil {
-				return err
-			}
-			v, err := b.Get(id)
-			if err != nil {
-				return err
-			}
-			if v == nil {
-				return nil
-			}
-			return json.Unmarshal(v, &image)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if image.ID == "" {
-		return nil, ErrNotFound
-	}
-	return &image, nil
-}
-
-func (store *ImageStore) saveImage(image *rpc.Image) error {
-	val, err := json.Marshal(image)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"func":  "json.Marshal",
-		}).Error("failed to marshal image")
-		return err
-	}
-
-	err = store.DB.Transaction(func(tx *kvite.Tx) error {
-		b, err := tx.CreateBucketIfNotExists("images")
-		if err != nil {
-			return err
-		}
-		return b.Put(image.ID, val)
-	})
-	if err != nil {
-		log.WithField("error", err).Error("failed to save image data")
-	}
-	return err
-}
-
-// GetImage gets a disk image
-func (store *ImageStore) GetImage(r *http.Request, request *rpc.ImageRequest, response *rpc.ImageResponse) error {
-	var images []*rpc.Image
-	image, err := store.getImage(request.ID)
-	if err != nil {
-		if err != ErrNotFound {
-			return err
-		}
-	} else {
-		images = append(images, image)
-	}
-
-	// not found is an empty slice
-	*response = rpc.ImageResponse{
-		Images: images,
-	}
-	return nil
-}
 
 // SpaceAvailible returns the available disk space
 // ensure we are not "over-committing" on disk
@@ -439,10 +272,11 @@ func (store *ImageStore) CreateGuestDisks(r *http.Request, request *rpc.GuestReq
 
 		disk.Volume = fmt.Sprintf("%s/guests/%s/disk-%d", store.config.Zpool, guest.ID, i)
 
-		_, err := zfs.GetDataset(disk.Volume)
+		ds, err := zfs.GetDataset(disk.Volume)
 
 		if err == nil {
 			//already exists
+			disk.Source = deviceForDataset(ds)
 			continue
 		} else {
 			if !strings.Contains(err.Error(), "does not exist") {

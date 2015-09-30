@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/mistifyio/mistify-agent-image"
+	imagestore "github.com/mistifyio/mistify-agent-image"
 	logx "github.com/mistifyio/mistify-logrus-ext"
 	flag "github.com/spf13/pflag"
 )
@@ -48,12 +48,9 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err = store.RunHTTP(port); err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-				"func":  "imagestore.ImageStore.RunHTTP",
-			}).Fatal(err)
-		}
+		server := store.RunHTTP(port)
+		// Block until the server is stopped
+		<-server.StopChan()
 	}()
 
 	wg.Wait()

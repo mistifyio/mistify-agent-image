@@ -156,7 +156,7 @@ func (f *fetcher) importImage(req *fetchRequest) *fetchResponse {
 	var cacheFileReader io.Reader = fileBuffer
 
 	filetypeBytes, err := fileBuffer.Peek(512)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		fetchResp.err = err
 		return fetchResp
 	}
